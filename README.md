@@ -1,4 +1,4 @@
-rust-msgpack
+msgpack-rust
 ============
 
 msgpack.org implementation for Rust language
