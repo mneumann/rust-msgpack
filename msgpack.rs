@@ -160,54 +160,44 @@ enum Value {
 
 impl Parser {
 
-  priv fn parse_array(len: uint) -> Result<Value, Error> {
-    let mut values = ~[];
-    for len.times() {
-      match self.parse_value() {
-        Ok(v) => values.push(v),
-        Err(e) => return Err(e)
-      }
+  priv fn parse_array(len: uint) -> Value {
+    let mut values = vec::with_capacity(len);
+    for len.times {
+      values.push(self.parse_value());
     }
-    Ok(Array(values))
+    Array(values)
   }
 
-  priv fn parse_map(len: uint) -> Result<Value, Error> {
-    let mut values = ~[];
-    for len.times() {
+  priv fn parse_map(len: uint) -> Value {
+    let mut values = vec::with_capacity(len);
+    for len.times {
       let k = self.parse_value();
-      if k.is_err() { return k; }
       let v = self.parse_value();
-      if v.is_err() { return v; }
-
-      match (k, v) {
-        (Ok(k), Ok(v)) => values.push((k, v)),
-        _ => return Err(Fatal)
-      }
-
+      values.push((k, v));
     }
-    Ok(Map(values))
+    Map(values)
   }
 
-  priv fn parse_raw(len: uint) -> Result<Value, Error> {
-    Ok(Raw(self.rd.read_bytes(len)))
+  priv fn parse_raw(len: uint) -> Value {
+    Raw(self.rd.read_bytes(len))
   }
 
   priv fn conv_float(v: u32) -> f32 { unsafe { reinterpret_cast(&v) } }
   priv fn conv_double(v: u64) -> f64 { unsafe { reinterpret_cast(&v) } }
 
-  fn parse() -> Result<Value, Error> {
-    return self.parse_value();
+  fn parse() -> Value {
+    self.parse_value()
   }
 
-  priv fn parse_value() -> Result<Value, Error> {
+  priv fn parse_value() -> Value {
     let c = self.rd.read_byte();
     if (c < 0) {
-      return Err(Eof);
+      fail;
     }
     let c = c as u8;
 
     if c <= 0x7f {
-      Ok(Uint(c as u64))
+      Uint(c as u64)
     } else if c <= 0x8f {
       self.parse_map(c as uint & 0x0F)
     } else if c <= 0x9f {
@@ -215,32 +205,32 @@ impl Parser {
     } else if c <= 0xbf {
       self.parse_raw(c as uint & 0x1F)
     } else if c >= 0xe0 {
-      Ok(Int((c as i8) as i64))
+      Int((c as i8) as i64)
     } else {
       match c {
-        0xc0 => Ok(Nil), 
-        0xc1 => Err(Reserved),
-        0xc2 => Ok(Bool(false)),
-        0xc3 => Ok(Bool(true)),
-        0xc4 .. 0xc9 => Err(Reserved),
-        0xd4 .. 0xd9 => Err(Reserved),
-        0xca => Ok(Float(self.conv_float(self.rd.read_be_u32()))),
-        0xcb => Ok(Double(self.conv_double(self.rd.read_be_u64()))),
-        0xcc => Ok(Uint(self.rd.read_u8() as u64)),
-        0xcd => Ok(Uint(self.rd.read_be_u16() as u64)),
-        0xce => Ok(Uint(self.rd.read_be_u32() as u64)),
-        0xcf => Ok(Uint(self.rd.read_be_u64())), 
-        0xd0 => Ok(Int(self.rd.read_i8() as i64)),
-        0xd1 => Ok(Int(self.rd.read_be_i16() as i64)),
-        0xd2 => Ok(Int(self.rd.read_be_i32() as i64)),
-        0xd3 => Ok(Int(self.rd.read_be_i64())),
+        0xc0 => Nil,
+        0xc1 => fail ~"Reserved",
+        0xc2 => Bool(false),
+        0xc3 => Bool(true),
+        0xc4 .. 0xc9 => fail ~"Reserved",
+        0xd4 .. 0xd9 => fail ~"Reserved",
+        0xca => Float(self.conv_float(self.rd.read_be_u32())),
+        0xcb => Double(self.conv_double(self.rd.read_be_u64())),
+        0xcc => Uint(self.rd.read_u8() as u64),
+        0xcd => Uint(self.rd.read_be_u16() as u64),
+        0xce => Uint(self.rd.read_be_u32() as u64),
+        0xcf => Uint(self.rd.read_be_u64()),
+        0xd0 => Int(self.rd.read_i8() as i64),
+        0xd1 => Int(self.rd.read_be_i16() as i64),
+        0xd2 => Int(self.rd.read_be_i32() as i64),
+        0xd3 => Int(self.rd.read_be_i64()),
         0xda => self.parse_raw(self.rd.read_be_u16() as uint),
         0xdb => self.parse_raw(self.rd.read_be_u32() as uint),
         0xdc => self.parse_array(self.rd.read_be_u16() as uint),
         0xdd => self.parse_array(self.rd.read_be_u32() as uint),
         0xde => self.parse_map(self.rd.read_be_u16() as uint),
         0xdf => self.parse_map(self.rd.read_be_u32() as uint),
-        _ => Err(Invalid)
+        _ => fail ~"Invalid"
       }
     }
   }
@@ -248,21 +238,24 @@ impl Parser {
   fn parse_all() -> ~[Value] {
     let mut arr = ~[];
     while !self.rd.eof() {
-      match self.parse_value() {
-        Ok(v)  => arr.push(v),
-        Err(_) => break
-      }
+      arr.push(self.parse_value())
     }
     return arr;
   }
 
 }
 
+fn doit(bytes: &[u8]) -> Value {
+  let br = io::BytesReader { bytes: bytes, pos: 0 };
+  let parser = Parser { rd: br as io::Reader };
+  parser.parse()
+}
+
 fn main() {
 /*
   let res = io::buffered_file_writer(&Path("test.msgpack"));
   if res.is_ok() {
-    let ser = Serializer { wr: res.get() };
+    l]et ser = Serializer { wr: res.get() };
 
     ser.emit_array_len(10);
     let mut i = 0;
@@ -306,13 +299,24 @@ fn main() {
   }
 */
 
-  let res = io::file_reader(&Path("test.msgpack"));
+  //let res = io::file_reader(&Path("/tmp/matching.msgpack"));
+  //doit(res.get());
 
-  if res.is_ok() {
-    let parser = Parser { rd: res.get() };
-    let bidding = parser.parse();
-    io::println(fmt!("%?", bidding));
-  }
+  //result::iter(&io::read_whole_file(&Path("/tmp/matching.msgpack")), |buf| {doit(*buf);});
+  let bytes = move io::read_whole_file(&Path("/tmp/matching.msgpack")).get();
+  doit(bytes);
+
+  /*let bytes: &[u8] = io::read_whole_file(&Path("/tmp/matching.msgpack")).get();
+  let br = io::BytesReader { bytes: bytes, pos: 0 };
+  let parser = Parser { rd: br as io::Reader };
+  let bidding = parser.parse();
+*/
+  //let bytes = io::read_whole_file(&Path("/tmp/matching.msgpack")).get();
+  //doit(bytes);
+
+  //if res.is_ok() {
+    //let parser = Parser { rd: res.get() };
+    //io::println(fmt!("%?", bidding));
+  //}
  
-  
 }
