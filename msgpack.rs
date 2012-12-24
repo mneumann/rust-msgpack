@@ -302,8 +302,7 @@ fn main() {
   //let res = io::file_reader(&Path("/tmp/matching.msgpack"));
   //doit(res.get());
 
-  //result::iter(&io::read_whole_file(&Path("/tmp/matching.msgpack")), |buf| {doit(*buf);});
-  let bytes = move io::read_whole_file(&Path("/tmp/matching.msgpack")).get();
+  let bytes: ~[u8] = result::unwrap(io::read_whole_file(&Path("/tmp/matching.msgpack")));
   doit(bytes);
 
   /*let bytes: &[u8] = io::read_whole_file(&Path("/tmp/matching.msgpack")).get();
