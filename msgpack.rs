@@ -1,94 +1,33 @@
-use io::{WriterUtil,ReaderUtil};
-use path::Path;
-use cast::reinterpret_cast;
+extern mod std;
 
-struct Serializer {
+use core::io::{WriterUtil,ReaderUtil};
+use core::path::Path;
+use core::cast::reinterpret_cast;
+
+use std::*;
+
+use std::serialize::*;
+
+pub struct Encoder {
   priv wr: io::Writer
 }
 
-impl Serializer {
-  fn emit_u8(v: u8) {
-    if (v & 128) != 0 {
-      self.wr.write_u8(0xcc);
-    }
-    self.wr.write_u8(v);
-  }
-
-  fn emit_u16(v: u16) {
-    self.wr.write_u8(0xcd);
-    self.wr.write_be_u16(v);
-  }
-
-  fn emit_u32(v: u32) {
-    self.wr.write_u8(0xce);
-    self.wr.write_be_u32(v);
-  }
-
-  fn emit_u64(v: u64) {
-    self.wr.write_u8(0xcf);
-    self.wr.write_be_u64(v);
-  }
-
-  fn emit_uint(v: u64) {
+impl Encoder {
+  priv fn _emit_opt_uint(&self, v: u64) {
     if      (v & 0xFFFFFFFFFFFFFF00) == 0 { self.emit_u8(v as u8);  }
     else if (v & 0xFFFFFFFFFFFF0000) == 0 { self.emit_u16(v as u16); }
     else if (v & 0xFFFFFFFF00000000) == 0 { self.emit_u32(v as u32); }
     else                                  { self.emit_u64(v); }
   }
 
-  fn emit_i8(v: i8) {
-    let v: u8 = v as u8;
-    if (v & 0xe0) != 0xe0 {
-      self.wr.write_u8(0xd0);
-    }
-    self.wr.write_u8(v);
-  }
-
-  fn emit_i16(v: i16) {
-    self.wr.write_u8(0xd1);
-    self.wr.write_be_i16(v);
-  }
-
-  fn emit_i32(v: i32) {
-    self.wr.write_u8(0xd2);
-    self.wr.write_be_i32(v);
-  }
-
-  fn emit_i64(v: i64) {
-    self.wr.write_u8(0xd3);
-    self.wr.write_be_i64(v);
-  }
-
-  fn emit_int(v: i64) {
+  priv fn _emit_opt_int(&self, v: i64) {
     if      v >= -(1i64<<7)  && v <= (1i64<<7)-1    { self.emit_i8(v as i8); }
     else if v >= -(1i64<<15) && v <= (1i64<<15)-1   { self.emit_i16(v as i16); }
     else if v >= -(1i64<<31) && v <= (1i64<<31)-1   { self.emit_i32(v as i32); }
     else /* v >= -(1i64<<63) && v <= (1i64<<63)-1) */ { self.emit_i64(v); }
   }
 
-  fn emit_nil() {
-    self.wr.write_u8(0xc0);
-  }
-
-  fn emit_bool(v: bool) {
-    if v {
-      self.wr.write_u8(0xc3);
-    } else {
-      self.wr.write_u8(0xc2);
-    }
-  }
-
-  fn emit_f32(v: f32) {
-    self.wr.write_u8(0xca);
-    unsafe { self.wr.write_be_u32(reinterpret_cast(&v)); }
-  }
-
-  fn emit_f64(v: f64) {
-    self.wr.write_u8(0xcb);
-    unsafe { self.wr.write_be_u64(reinterpret_cast(&v)); }
-  }
-
-  priv fn emit_raw_len(len: uint) {
+  priv fn _emit_raw_len(&self, len: uint) {
     if len <= 31 {
       self.wr.write_u8(0xa0 | (len as u8));
     } else if len <= 0xFFFF {
@@ -100,17 +39,12 @@ impl Serializer {
     }
   }
 
-  fn emit_raw(v: &[const u8]) {
-    self.emit_raw_len(vec::len(v));
+  priv fn _emit_raw(&self, v: &[const u8]) {
+    self._emit_raw_len(vec::len(v));
     self.wr.write(v);    
   }
 
-  fn emit_str(v: &str) {
-    self.emit_raw_len(str::len(v));
-    self.wr.write_str(v);    
-  }
-
-  fn emit_array_len(len: uint) {
+  priv fn _emit_vec_len(&self, len: uint) {
     if len <= 15 {
       self.wr.write_u8(0x90 | (len as u8));
     } else if len <= 0xFFFF {
@@ -131,6 +65,186 @@ impl Serializer {
     } else {
       self.wr.write_u8(0xdf);
       self.wr.write_be_u32(len as u32);
+    }
+  }
+
+}
+
+pub impl Encoder: serialize::Encoder {
+  //
+  // Unsiged integers
+  //
+
+  fn emit_u8(&self, v: u8) {
+    if (v & 128) != 0 {
+      self.wr.write_u8(0xcc);
+    }
+    self.wr.write_u8(v);
+  }
+
+  fn emit_u16(&self, v: u16) {
+    self.wr.write_u8(0xcd);
+    self.wr.write_be_u16(v);
+  }
+
+  fn emit_u32(&self, v: u32) {
+    self.wr.write_u8(0xce);
+    self.wr.write_be_u32(v);
+  }
+
+  fn emit_u64(&self, v: u64) {
+    self.wr.write_u8(0xcf);
+    self.wr.write_be_u64(v);
+  }
+
+  fn emit_uint(&self, v: uint) {
+    self.emit_u64(v as u64); // XXX
+  }
+
+  //
+  // Signed integers
+  //
+
+  fn emit_i8(&self, v: i8) {
+    let v: u8 = v as u8;
+    if (v & 0xe0) != 0xe0 {
+      self.wr.write_u8(0xd0);
+    }
+    self.wr.write_u8(v);
+  }
+
+  fn emit_i16(&self, v: i16) {
+    self.wr.write_u8(0xd1);
+    self.wr.write_be_i16(v);
+  }
+
+  fn emit_i32(&self, v: i32) {
+    self.wr.write_u8(0xd2);
+    self.wr.write_be_i32(v);
+  }
+
+  fn emit_i64(&self, v: i64) {
+    self.wr.write_u8(0xd3);
+    self.wr.write_be_i64(v);
+  }
+
+
+  fn emit_int(&self, v: int) {
+    self.emit_i64(v as i64); // XXX
+  }
+
+  //
+  // Floating point
+  //
+
+  fn emit_f32(&self, v: f32) {
+    self.wr.write_u8(0xca);
+    unsafe { self.wr.write_be_u32(reinterpret_cast(&v)); }
+  }
+
+  fn emit_f64(&self, v: f64) {
+    self.wr.write_u8(0xcb);
+    unsafe { self.wr.write_be_u64(reinterpret_cast(&v)); }
+  }
+
+  fn emit_float(&self, v: float) {
+    self.emit_f64(v as f64); // XXX
+  }
+
+  //
+  // Strings
+  //
+
+  fn emit_borrowed_str(&self, v: &str) {
+    self._emit_raw_len(str::len(v));
+    self.wr.write_str(v);   
+  }
+
+  fn emit_owned_str(&self, v: &str) {
+    self.emit_borrowed_str(v);
+  }
+
+  fn emit_managed_str(&self, v: &str) {
+    self.emit_borrowed_str(v);
+  }
+
+  fn emit_char(&self, v: char) {
+    self.emit_borrowed_str(str::from_char(v));
+  }
+
+  //
+  // Vectors
+  //
+
+  fn emit_borrowed_vec(&self, len: uint, f: fn()) {
+    self._emit_vec_len(len);
+    f();
+  }
+
+  fn emit_owned_vec(&self, len: uint, f: fn()) {
+    self.emit_borrowed_vec(len, f);
+  }
+
+  fn emit_managed_vec(&self, len: uint, f: fn()) {
+    self.emit_borrowed_vec(len, f);
+  }
+
+  fn emit_vec_elt(&self, idx: uint, f: fn()) {
+    f();
+  }
+
+  //
+  // Other
+  //
+
+  fn emit_rec(&self, f: fn()) {
+    fail ~"Records not supported";
+  }
+
+  fn emit_struct(&self, _name: &str, len: uint, f: fn()) {
+    self._emit_vec_len(len);
+    f();
+  }
+
+  fn emit_field(&self, name: &str, idx: uint, f: fn()) {
+    f();
+  }
+
+  fn emit_tup(&self, len: uint, f: fn()) {
+    self._emit_vec_len(len);
+    f();
+  }
+
+  fn emit_tup_elt(&self, idx: uint, f: fn()) {
+    f();
+  }
+
+  // XXX
+  fn emit_borrowed(&self, f: fn()) { f(); }
+  fn emit_owned(&self, f: fn()) { f(); }
+  fn emit_managed(&self, f: fn()) { f(); }
+
+  fn emit_enum(&self, _name: &str, f: fn()) {
+    fail ~"enum not supported";
+  }
+
+  fn emit_enum_variant(&self, _name: &str, id: uint, _cnt: uint, f: fn()) {
+    fail ~"enum not supported";
+  }
+
+  fn emit_enum_variant_arg(&self, _idx: uint, f: fn()) {
+    fail ~"enum not supported";
+  }
+
+  fn emit_nil(&self) {
+    self.wr.write_u8(0xc0);
+  }
+
+  fn emit_bool(&self, v: bool) {
+    if v {
+      self.wr.write_u8(0xc3);
+    } else {
+      self.wr.write_u8(0xc2);
     }
   }
 }
@@ -161,21 +275,11 @@ enum Value {
 impl Parser {
 
   priv fn parse_array(len: uint) -> Value {
-    let mut values = vec::with_capacity(len);
-    for len.times {
-      values.push(self.parse_value());
-    }
-    Array(values)
+    Array(vec::from_fn(len, |_| { self.parse_value() }))
   }
 
   priv fn parse_map(len: uint) -> Value {
-    let mut values = vec::with_capacity(len);
-    for len.times {
-      let k = self.parse_value();
-      let v = self.parse_value();
-      values.push((k, v));
-    }
-    Map(values)
+    Map(vec::from_fn(len, |_| { (self.parse_value(), self.parse_value()) }))
   }
 
   priv fn parse_raw(len: uint) -> Value {
@@ -251,7 +355,37 @@ fn doit(bytes: &[u8]) -> Value {
   parser.parse()
 }
 
+#[auto_encode]
+struct Blah {
+  f: uint,
+  g: uint,
+  i: ~str,
+  a: ~[uint]
+}
+
+/*
+pub impl<S: serialize::Encoder> Blah: serialize::Encodable<S> {
+  fn encode(&self, s: &S) {
+    do s.emit_borrowed_vec(2) {
+      s.emit_uint(self.f);
+      s.emit_uint(self.g);
+    }
+  }
+}
+*/
+
 fn main() {
+  let res = io::buffered_file_writer(&Path("test.msgpack"));
+  if res.is_ok() {
+    let enc = Encoder { wr: res.get() };
+    let blah = Blah { f: 1, g: 2, i: ~"hallo", a: ~[] }; 
+    let blub = Blah { f: 5, g: 1, i: ~"nochwas", a: ~[1,2,3] }; 
+    let b = ~[blah, blub];
+    b.encode(&enc);
+    5.encode(&enc);
+  }
+
+
 /*
   let res = io::buffered_file_writer(&Path("test.msgpack"));
   if res.is_ok() {
@@ -302,8 +436,8 @@ fn main() {
   //let res = io::file_reader(&Path("/tmp/matching.msgpack"));
   //doit(res.get());
 
-  let bytes: ~[u8] = result::unwrap(io::read_whole_file(&Path("/tmp/matching.msgpack")));
-  doit(bytes);
+  //let bytes: ~[u8] = result::unwrap(io::read_whole_file(&Path("Matching.msgpack")));
+  //doit(bytes);
 
   /*let bytes: &[u8] = io::read_whole_file(&Path("/tmp/matching.msgpack")).get();
   let br = io::BytesReader { bytes: bytes, pos: 0 };
