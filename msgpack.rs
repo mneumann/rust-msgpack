@@ -12,6 +12,10 @@ pub struct Encoder {
   priv wr: io::Writer
 }
 
+pub struct Decoder {
+  priv rd: io::Reader
+}
+
 #[inline(always)]
 priv fn can_cast_i16_to_i8(v : i16) -> bool {
   const I: u16 = 0xFF80;
@@ -30,6 +34,39 @@ priv fn can_cast_i64_to_i32(v : i64) -> bool {
   ((v as u64) & I == 0) || ((v as u64) & I == I)
 }
 
+#[inline(always)]
+priv fn can_cast_u64_to_u8(v : u64) -> bool {
+  (v & 0xFFFFFFFFFFFFFF00 == 0)
+}
+
+#[inline(always)]
+priv fn can_cast_u64_to_u16(v : u64) -> bool {
+  (v & 0xFFFFFFFFFFFF0000 == 0)
+}
+
+#[inline(always)]
+priv fn can_cast_u64_to_u32(v : u64) -> bool {
+  (v & 0xFFFFFFFF00000000 == 0)
+}
+
+#[inline(always)]
+priv fn can_cast_u32_to_u8(v : u32) -> bool {
+  (v & 0xFFFFFF00 == 0)
+}
+
+#[inline(always)]
+priv fn can_cast_u32_to_u16(v : u32) -> bool {
+  (v & 0xFFFF0000 == 0)
+}
+
+#[inline(always)]
+priv fn can_cast_u16_to_u8(v : u16) -> bool {
+  (v & 0xFF00 == 0)
+}
+
+priv fn conv_float(v: u32) -> f32 { unsafe { reinterpret_cast(&v) } }
+priv fn conv_double(v: u64) -> f64 { unsafe { reinterpret_cast(&v) } }
+
 impl Encoder {
 
   #[inline(always)]
@@ -42,7 +79,7 @@ impl Encoder {
  
   #[inline(always)]
   fn _emit_u16(&self, v: u16) {
-    if v & 0xFF00 != 0 {
+    if !can_cast_u16_to_u8(v) {
       self.wr.write_u8(0xcd);
       self.wr.write_be_u16(v);
     }
@@ -53,7 +90,7 @@ impl Encoder {
 
   #[inline(always)]
   fn _emit_u32(&self, v: u32) {
-    if v & 0xFFFF0000 != 0 {
+    if !can_cast_u32_to_u16(v) {
       self.wr.write_u8(0xce);
       self.wr.write_be_u32(v);
     }
@@ -64,7 +101,7 @@ impl Encoder {
 
   #[inline(always)]
   fn _emit_u64(&self, v: u64) {
-    if v & 0xFFFFFFFF00000000 != 0 {
+    if !can_cast_u64_to_u8(v) {
       self.wr.write_u8(0xcf);
       self.wr.write_be_u64(v);
     }
@@ -128,7 +165,7 @@ impl Encoder {
 
   priv fn _emit_raw(&self, v: &[const u8]) {
     self._emit_raw_len(vec::len(v));
-    self.wr.write(v);    
+    self.wr.write(v);
   }
 
   priv fn _emit_vec_len(&self, len: uint) {
@@ -143,7 +180,7 @@ impl Encoder {
     }
   }
 
-  fn emit_map_len(len: uint) {
+  fn _emit_map_len(&self, len: uint) {
     if len <= 15 {
       self.wr.write_u8(0x80 | (len as u8));
     } else if len <= 0xFFFF {
@@ -262,7 +299,7 @@ pub impl Encoder: serialize::Encoder {
     self.emit_borrowed_vec(len, f);
   }
 
-  fn emit_vec_elt(&self, idx: uint, f: fn()) {
+  fn emit_vec_elt(&self, _idx: uint, f: fn()) {
     f();
   }
 
@@ -270,7 +307,7 @@ pub impl Encoder: serialize::Encoder {
   // Other
   //
 
-  fn emit_rec(&self, f: fn()) {
+  fn emit_rec(&self, _f: fn()) {
     fail ~"Records not supported";
   }
 
@@ -279,7 +316,7 @@ pub impl Encoder: serialize::Encoder {
     f();
   }
 
-  fn emit_field(&self, name: &str, idx: uint, f: fn()) {
+  fn emit_field(&self, _name: &str, _idx: uint, f: fn()) {
     f();
   }
 
@@ -288,24 +325,23 @@ pub impl Encoder: serialize::Encoder {
     f();
   }
 
-  fn emit_tup_elt(&self, idx: uint, f: fn()) {
+  fn emit_tup_elt(&self, _idx: uint, f: fn()) {
     f();
   }
 
-  // XXX
   fn emit_borrowed(&self, f: fn()) { f(); }
   fn emit_owned(&self, f: fn()) { f(); }
   fn emit_managed(&self, f: fn()) { f(); }
 
-  fn emit_enum(&self, _name: &str, f: fn()) {
+  fn emit_enum(&self, _name: &str, _f: fn()) {
     fail ~"enum not supported";
   }
 
-  fn emit_enum_variant(&self, _name: &str, id: uint, _cnt: uint, f: fn()) {
+  fn emit_enum_variant(&self, _name: &str, _id: uint, _cnt: uint, _f: fn()) {
     fail ~"enum not supported";
   }
 
-  fn emit_enum_variant_arg(&self, _idx: uint, f: fn()) {
+  fn emit_enum_variant_arg(&self, _idx: uint, _f: fn()) {
     fail ~"enum not supported";
   }
 
@@ -322,15 +358,156 @@ pub impl Encoder: serialize::Encoder {
   }
 }
 
-struct Parser {
-  priv rd: io::Reader
+impl Decoder {
+
+  #[inline(always)]
+  fn _read_byte(&self) -> u8 {
+    let c = self.rd.read_byte();
+    if (c < 0) { fail }
+    c as u8
+  }
+
+  fn _read_unsigned(&self) -> u64 {
+    let c = self._read_byte();
+    match c {
+      0x00 .. 0x7f => c as u64,
+      0xcc         => self.rd.read_u8() as u64,
+      0xcd         => self.rd.read_be_u16() as u64,
+      0xce         => self.rd.read_be_u32() as u64,
+      0xcf         => self.rd.read_be_u64(),
+      _            => fail ~"No unsigned integer"
+    }
+  }
+
+  fn _read_raw(&self, len: uint) -> ~[u8] {
+    self.rd.read_bytes(len)
+  }
+
+  fn _read_str(&self, len: uint) -> ~str {
+    str::from_bytes(self.rd.read_bytes(len))
+  }
+
+  fn _read_vec_len(&self) -> uint {
+    let c = self._read_byte();
+    match c {
+      0x90 .. 0x9f => c as uint & 0x0F,
+      0xdc         => self.rd.read_be_u16() as uint,
+      0xdd         => self.rd.read_be_u32() as uint,
+      _            => fail
+    }
+  }
 }
 
-enum Error {
-  Eof,
-  Reserved,
-  Invalid,
-  Fatal
+pub impl Decoder: serialize::Decoder {
+
+    fn read_nil(&self) -> () {
+      if self.rd.read_byte() != 0xc0 { fail }
+    }
+
+    // XXX
+    fn read_uint(&self) -> uint { 0 }
+
+    fn read_u64(&self) -> u64 { self._read_unsigned() }
+
+    fn read_u32(&self) -> u32 {
+      let v = self._read_unsigned();
+      if !can_cast_u64_to_u32(v) { fail }
+      v as u32
+    }
+
+    fn read_u16(&self) -> u16 {
+      let v = self._read_unsigned();
+      if !can_cast_u64_to_u16(v) { fail }
+      v as u16
+    }
+
+    fn read_u8(&self) -> u8 {
+      let v = self._read_unsigned();
+      if !can_cast_u64_to_u8(v) { fail }
+      v as u8
+    }
+
+    // XXX
+    fn read_int(&self) -> int { 0 }
+    fn read_i64(&self) -> i64 { 0 }
+    fn read_i32(&self) -> i32 { 0 }
+    fn read_i16(&self) -> i16 { 0 }
+    fn read_i8(&self) -> i8 { 0 }
+
+    fn read_bool(&self) -> bool {
+      match self.rd.read_byte() {
+        0xc2 => false,
+        0xc3 => true,
+        _    => fail
+      }
+    }
+
+    fn read_f64(&self) -> f64 {
+      match self.rd.read_byte() {
+        0xcb => conv_double(self.rd.read_be_u64()),
+        _ => fail
+      }
+    }
+
+    fn read_f32(&self) -> f32 {
+      match self.rd.read_byte() {
+        0xca => conv_float(self.rd.read_be_u32()),
+        _ => fail
+      }
+    }
+
+    // XXX
+    fn read_float(&self) -> float {
+      0.0
+    }
+
+    // XXX
+    fn read_char(&self) -> char {
+      fail
+    }
+
+    fn read_owned_str(&self) -> ~str {
+      let c = self._read_byte();
+      match c {
+        0xa0 .. 0xbf => self._read_str(c as uint & 0x1F),
+        0xda         => self._read_str(self.rd.read_be_u16() as uint),
+        0xdb         => self._read_str(self.rd.read_be_u32() as uint),
+        _            => fail
+      }
+    }
+
+    fn read_managed_str(&self) -> @str {
+      self.read_owned_str().to_managed()
+    }
+
+    fn read_enum<T>(&self, name: &str, f: fn() -> T) -> T { fail }
+    fn read_enum_variant<T>(&self, f: fn(uint) -> T) -> T { fail }
+    fn read_enum_variant_arg<T>(&self, idx: uint, f: fn() -> T) -> T { fail }
+
+    fn read_owned<T>(&self, f: fn() -> T) -> T { f() }
+    fn read_managed<T>(&self, f: fn() -> T) -> T { f() }
+
+    fn read_owned_vec<T>(&self, f: fn(uint) -> T) -> T {
+      f(self._read_vec_len())
+    }
+
+    fn read_managed_vec<T>(&self, f: fn(uint) -> T) -> T {
+      f(self._read_vec_len())
+    }
+    
+    fn read_vec_elt<T>(&self, _idx: uint, f: fn() -> T) -> T { f() }
+
+    fn read_rec<T>(&self, f: fn() -> T) -> T { fail }
+
+    fn read_struct<T>(&self, _name: &str, len: uint, f: fn() -> T) -> T {
+      if len != self._read_vec_len() { fail }
+      f()
+    }
+
+    fn read_field<T>(&self, _name: &str, _idx: uint, f: fn() -> T) -> T { f() }
+
+    fn read_tup<T>(&self, sz: uint, f: fn() -> T) -> T { fail }
+    fn read_tup_elt<T>(&self, idx: uint, f: fn() -> T) -> T { fail }
 }
 
 enum Value {
@@ -345,44 +522,32 @@ enum Value {
   Raw(~[u8])
 }
 
-impl Parser {
-
+impl Decoder {
   priv fn parse_array(len: uint) -> Value {
-    Array(vec::from_fn(len, |_| { self.parse_value() }))
+    Array(vec::from_fn(len, |_| { self.parse() }))
   }
 
   priv fn parse_map(len: uint) -> Value {
-    Map(vec::from_fn(len, |_| { (self.parse_value(), self.parse_value()) }))
+    Map(vec::from_fn(len, |_| { (self.parse(), self.parse()) }))
   }
-
-  priv fn parse_raw(len: uint) -> Value {
-    Raw(self.rd.read_bytes(len))
-  }
-
-  priv fn conv_float(v: u32) -> f32 { unsafe { reinterpret_cast(&v) } }
-  priv fn conv_double(v: u64) -> f64 { unsafe { reinterpret_cast(&v) } }
 
   fn parse() -> Value {
-    self.parse_value()
-  }
-
-  priv fn parse_value() -> Value {
     let c = self.rd.read_byte();
     if (c < 0) {
-      fail;
+      fail
     }
     match (c as u8) {
       0x00 .. 0x7f => Uint(c as u64),
       0x80 .. 0x8f => self.parse_map(c as uint & 0x0F),
       0x90 .. 0x9f => self.parse_array(c as uint & 0x0F),
-      0xa0 .. 0xbf => self.parse_raw(c as uint & 0x1F),
+      0xa0 .. 0xbf => Raw(self._read_raw(c as uint & 0x1F)),
       0xc0         => Nil,
       0xc1         => fail ~"Reserved",
       0xc2         => Bool(false),
       0xc3         => Bool(true),
       0xc4 .. 0xc9 => fail ~"Reserved",
-      0xca         => Float(self.conv_float(self.rd.read_be_u32())),
-      0xcb         => Double(self.conv_double(self.rd.read_be_u64())),
+      0xca         => Float(conv_float(self.rd.read_be_u32())),
+      0xcb         => Double(conv_double(self.rd.read_be_u64())),
       0xcc         => Uint(self.rd.read_u8() as u64),
       0xcd         => Uint(self.rd.read_be_u16() as u64),
       0xce         => Uint(self.rd.read_be_u32() as u64),
@@ -392,8 +557,8 @@ impl Parser {
       0xd2         => Int(self.rd.read_be_i32() as i64),
       0xd3         => Int(self.rd.read_be_i64()),
       0xd4 .. 0xd9 => fail ~"Reserved",
-      0xda         => self.parse_raw(self.rd.read_be_u16() as uint),
-      0xdb         => self.parse_raw(self.rd.read_be_u32() as uint),
+      0xda         => Raw(self._read_raw(self.rd.read_be_u16() as uint)),
+      0xdb         => Raw(self._read_raw(self.rd.read_be_u32() as uint)),
       0xdc         => self.parse_array(self.rd.read_be_u16() as uint),
       0xdd         => self.parse_array(self.rd.read_be_u32() as uint),
       0xde         => self.parse_map(self.rd.read_be_u16() as uint),
@@ -402,118 +567,57 @@ impl Parser {
       _            => fail ~"Invalid"
     }
   }
-
-  fn parse_all() -> ~[Value] {
-    let mut arr = ~[];
-    while !self.rd.eof() {
-      arr.push(self.parse_value())
-    }
-    return arr;
-  }
-
 }
 
 fn doit(bytes: &[u8]) -> Value {
   let br = io::BytesReader { bytes: bytes, pos: 0 };
-  let parser = Parser { rd: br as io::Reader };
+  let parser = Decoder { rd: br as io::Reader };
   parser.parse()
 }
 
 #[auto_encode]
+#[auto_decode]
 struct Blah {
-  f: uint,
-  g: uint,
+  f: u8,
+  g: u16,
   i: ~str,
-  a: ~[uint]
+  a: ~[u32]
 }
 
-/*
-pub impl<S: serialize::Encoder> Blah: serialize::Encodable<S> {
-  fn encode(&self, s: &S) {
-    do s.emit_borrowed_vec(2) {
-      s.emit_uint(self.f);
-      s.emit_uint(self.g);
-    }
-  }
+fn decod(bytes: &[u8]) {
+  let br = io::BytesReader { bytes: bytes, pos: 0 };
+  let parser = Decoder { rd: br as io::Reader };
+  let a: ~[~Blah] = serialize::Decodable::decode(&parser);
+  io::println(fmt!("%?", a));
 }
-*/
+
 
 fn main() {
-  let res = io::buffered_file_writer(&Path("test.msgpack"));
-  if res.is_ok() {
-    let enc = Encoder { wr: res.get() };
-    let blah = Blah { f: 1, g: 2, i: ~"hallo", a: ~[] }; 
-    let blub = Blah { f: 5, g: 1, i: ~"nochwas", a: ~[1,2,3] }; 
-    let b = ~[blah, blub];
-    b.encode(&enc);
-    5.encode(&enc);
+  {
+    let res = io::buffered_file_writer(&Path("test.msgpack"));
+    if res.is_ok() {
+      let enc = Encoder { wr: res.unwrap() };
+      let blah = Blah { f: 1, g: 2, i: ~"hallo", a: ~[] }; 
+      let blub = Blah { f: 5, g: 1, i: ~"nochwas", a: ~[1,2,3] }; 
+      let b = ~[blah, blub];
+      b.encode(&enc);
+      //5.encode(&enc);
+      io::println("OK");
+    }
   }
 
+  let bytes: ~[u8] = result::unwrap(io::read_whole_file(&Path("test.msgpack")));
+  decod(bytes);
 
 /*
-  let res = io::buffered_file_writer(&Path("test.msgpack"));
-  if res.is_ok() {
-    l]et ser = Serializer { wr: res.get() };
 
-    ser.emit_array_len(10);
-    let mut i = 0;
-    while i < 10 {
-      i += 1;
-      ser.emit_int(i);
-    }
+  let bytes: ~[u8] = result::unwrap(io::read_whole_file(&Path("Matching.msgpack")));
+  let b = time::precise_time_ns();
+  doit(bytes);
+  let e = time::precise_time_ns();
 
-    ser.emit_u8(123);
+  let total = e - b;
 
-    ser.emit_u8(6666);
-
-    ser.emit_i8(-1);
-    ser.emit_i16(-12343);
-
-    ser.emit_u16(12334);
-    ser.emit_i32(-4444444999);
-
-    ser.emit_uint(12323232);
-
-    ser.emit_int(-100000);
-
-    ser.emit_bool(true);
-    ser.emit_bool(false);
-    ser.emit_nil();
-
-    ser.emit_f32(12333.5);
-    ser.emit_f64(12333.1239999);
-
-    ser.emit_str("test");
-
-    let r: &[const u8] = [1, 2, 3, 4];
-    ser.emit_raw(r);
-
-    ser.emit_map_len(2);
-    ser.emit_str("hallooooo");
-    ser.emit_uint(123);
-
-    ser.emit_str("test");
-    ser.emit_int(-123);
-  }
+  io::println(fmt!("%?", total));
 */
-
-  //let res = io::file_reader(&Path("/tmp/matching.msgpack"));
-  //doit(res.get());
-
-  //let bytes: ~[u8] = result::unwrap(io::read_whole_file(&Path("Matching.msgpack")));
-  //doit(bytes);
-
-  /*let bytes: &[u8] = io::read_whole_file(&Path("/tmp/matching.msgpack")).get();
-  let br = io::BytesReader { bytes: bytes, pos: 0 };
-  let parser = Parser { rd: br as io::Reader };
-  let bidding = parser.parse();
-*/
-  //let bytes = io::read_whole_file(&Path("/tmp/matching.msgpack")).get();
-  //doit(bytes);
-
-  //if res.is_ok() {
-    //let parser = Parser { rd: res.get() };
-    //io::println(fmt!("%?", bidding));
-  //}
- 
 }
