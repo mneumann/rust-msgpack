@@ -12,19 +12,106 @@ pub struct Encoder {
   priv wr: io::Writer
 }
 
+#[inline(always)]
+priv fn can_cast_i16_to_i8(v : i16) -> bool {
+  const I: u16 = 0xFF80;
+  ((v as u16) & I == 0) || ((v as u16) & I == I)
+}
+
+#[inline(always)]
+priv fn can_cast_i32_to_i16(v : i32) -> bool {
+  const I: u32 = 0xFFFF8000;
+  ((v as u32) & I == 0) || ((v as u32) & I == I)
+}
+
+#[inline(always)]
+priv fn can_cast_i64_to_i32(v : i64) -> bool {
+  const I: u64 = 0xFFFFFFFF80000000;
+  ((v as u64) & I == 0) || ((v as u64) & I == I)
+}
+
 impl Encoder {
-  priv fn _emit_opt_uint(&self, v: u64) {
-    if      (v & 0xFFFFFFFFFFFFFF00) == 0 { self.emit_u8(v as u8);  }
-    else if (v & 0xFFFFFFFFFFFF0000) == 0 { self.emit_u16(v as u16); }
-    else if (v & 0xFFFFFFFF00000000) == 0 { self.emit_u32(v as u32); }
-    else                                  { self.emit_u64(v); }
+
+  #[inline(always)]
+  fn _emit_u8(&self, v: u8) {
+    if v & 0x80 != 0 {
+      self.wr.write_u8(0xcc);
+    }
+    self.wr.write_u8(v);
+  }
+ 
+  #[inline(always)]
+  fn _emit_u16(&self, v: u16) {
+    if v & 0xFF00 != 0 {
+      self.wr.write_u8(0xcd);
+      self.wr.write_be_u16(v);
+    }
+    else {
+      self._emit_u8(v as u8);
+    }
   }
 
-  priv fn _emit_opt_int(&self, v: i64) {
-    if      v >= -(1i64<<7)  && v <= (1i64<<7)-1    { self.emit_i8(v as i8); }
-    else if v >= -(1i64<<15) && v <= (1i64<<15)-1   { self.emit_i16(v as i16); }
-    else if v >= -(1i64<<31) && v <= (1i64<<31)-1   { self.emit_i32(v as i32); }
-    else /* v >= -(1i64<<63) && v <= (1i64<<63)-1) */ { self.emit_i64(v); }
+  #[inline(always)]
+  fn _emit_u32(&self, v: u32) {
+    if v & 0xFFFF0000 != 0 {
+      self.wr.write_u8(0xce);
+      self.wr.write_be_u32(v);
+    }
+    else {
+      self._emit_u16(v as u16);
+    }
+  }
+
+  #[inline(always)]
+  fn _emit_u64(&self, v: u64) {
+    if v & 0xFFFFFFFF00000000 != 0 {
+      self.wr.write_u8(0xcf);
+      self.wr.write_be_u64(v);
+    }
+    else {
+      self._emit_u32(v as u32);
+    }
+  }
+
+  #[inline(always)]
+  fn _emit_i8(&self, v: i8) {
+    if (v as u8) & 0xe0 != 0xe0 {
+      self.wr.write_u8(0xd0);
+    }
+    self.wr.write_u8(v as u8);
+  }
+
+  #[inline(always)]
+  fn _emit_i16(&self, v: i16) {
+    if !can_cast_i16_to_i8(v) {
+      self.wr.write_u8(0xd1);
+      self.wr.write_be_i16(v);
+    }
+    else {
+      self._emit_i8(v as i8);
+    }
+  }
+
+  #[inline(always)]
+  fn _emit_i32(&self, v: i32) {
+    if !can_cast_i32_to_i16(v) {
+      self.wr.write_u8(0xd2);
+      self.wr.write_be_i32(v);
+    }
+    else {
+      self._emit_i16(v as i16);
+    }
+  }
+
+  #[inline(always)]
+  fn _emit_i64(&self, v: i64) {
+    if !can_cast_i64_to_i32(v) {
+      self.wr.write_u8(0xd3);
+      self.wr.write_be_i64(v);
+    }
+    else {
+      self._emit_i32(v as i32);
+    }
   }
 
   priv fn _emit_raw_len(&self, len: uint) {
@@ -76,29 +163,23 @@ pub impl Encoder: serialize::Encoder {
   //
 
   fn emit_u8(&self, v: u8) {
-    if (v & 128) != 0 {
-      self.wr.write_u8(0xcc);
-    }
-    self.wr.write_u8(v);
+    self._emit_u8(v)
   }
-
+ 
   fn emit_u16(&self, v: u16) {
-    self.wr.write_u8(0xcd);
-    self.wr.write_be_u16(v);
+    self._emit_u16(v)
   }
 
   fn emit_u32(&self, v: u32) {
-    self.wr.write_u8(0xce);
-    self.wr.write_be_u32(v);
+    self._emit_u32(v)
   }
 
   fn emit_u64(&self, v: u64) {
-    self.wr.write_u8(0xcf);
-    self.wr.write_be_u64(v);
+    self._emit_u64(v)
   }
 
   fn emit_uint(&self, v: uint) {
-    self.emit_u64(v as u64); // XXX
+    self._emit_u64(v as u64)
   }
 
   //
@@ -106,31 +187,23 @@ pub impl Encoder: serialize::Encoder {
   //
 
   fn emit_i8(&self, v: i8) {
-    let v: u8 = v as u8;
-    if (v & 0xe0) != 0xe0 {
-      self.wr.write_u8(0xd0);
-    }
-    self.wr.write_u8(v);
+    self._emit_i8(v)
   }
 
   fn emit_i16(&self, v: i16) {
-    self.wr.write_u8(0xd1);
-    self.wr.write_be_i16(v);
+    self._emit_i16(v)
   }
 
   fn emit_i32(&self, v: i32) {
-    self.wr.write_u8(0xd2);
-    self.wr.write_be_i32(v);
+    self._emit_i32(v)
   }
 
   fn emit_i64(&self, v: i64) {
-    self.wr.write_u8(0xd3);
-    self.wr.write_be_i64(v);
+    self._emit_i64(v)
   }
 
-
   fn emit_int(&self, v: int) {
-    self.emit_i64(v as i64); // XXX
+    self._emit_i64(v as i64);
   }
 
   //
