@@ -298,44 +298,35 @@ impl Parser {
     if (c < 0) {
       fail;
     }
-    let c = c as u8;
-
-    if c <= 0x7f {
-      Uint(c as u64)
-    } else if c <= 0x8f {
-      self.parse_map(c as uint & 0x0F)
-    } else if c <= 0x9f {
-      self.parse_array(c as uint & 0x0F)
-    } else if c <= 0xbf {
-      self.parse_raw(c as uint & 0x1F)
-    } else if c >= 0xe0 {
-      Int((c as i8) as i64)
-    } else {
-      match c {
-        0xc0 => Nil,
-        0xc1 => fail ~"Reserved",
-        0xc2 => Bool(false),
-        0xc3 => Bool(true),
-        0xc4 .. 0xc9 => fail ~"Reserved",
-        0xd4 .. 0xd9 => fail ~"Reserved",
-        0xca => Float(self.conv_float(self.rd.read_be_u32())),
-        0xcb => Double(self.conv_double(self.rd.read_be_u64())),
-        0xcc => Uint(self.rd.read_u8() as u64),
-        0xcd => Uint(self.rd.read_be_u16() as u64),
-        0xce => Uint(self.rd.read_be_u32() as u64),
-        0xcf => Uint(self.rd.read_be_u64()),
-        0xd0 => Int(self.rd.read_i8() as i64),
-        0xd1 => Int(self.rd.read_be_i16() as i64),
-        0xd2 => Int(self.rd.read_be_i32() as i64),
-        0xd3 => Int(self.rd.read_be_i64()),
-        0xda => self.parse_raw(self.rd.read_be_u16() as uint),
-        0xdb => self.parse_raw(self.rd.read_be_u32() as uint),
-        0xdc => self.parse_array(self.rd.read_be_u16() as uint),
-        0xdd => self.parse_array(self.rd.read_be_u32() as uint),
-        0xde => self.parse_map(self.rd.read_be_u16() as uint),
-        0xdf => self.parse_map(self.rd.read_be_u32() as uint),
-        _ => fail ~"Invalid"
-      }
+    match (c as u8) {
+      0x00 .. 0x7f => Uint(c as u64),
+      0x80 .. 0x8f => self.parse_map(c as uint & 0x0F),
+      0x90 .. 0x9f => self.parse_array(c as uint & 0x0F),
+      0xa0 .. 0xbf => self.parse_raw(c as uint & 0x1F),
+      0xc0         => Nil,
+      0xc1         => fail ~"Reserved",
+      0xc2         => Bool(false),
+      0xc3         => Bool(true),
+      0xc4 .. 0xc9 => fail ~"Reserved",
+      0xca         => Float(self.conv_float(self.rd.read_be_u32())),
+      0xcb         => Double(self.conv_double(self.rd.read_be_u64())),
+      0xcc         => Uint(self.rd.read_u8() as u64),
+      0xcd         => Uint(self.rd.read_be_u16() as u64),
+      0xce         => Uint(self.rd.read_be_u32() as u64),
+      0xcf         => Uint(self.rd.read_be_u64()),
+      0xd0         => Int(self.rd.read_i8() as i64),
+      0xd1         => Int(self.rd.read_be_i16() as i64),
+      0xd2         => Int(self.rd.read_be_i32() as i64),
+      0xd3         => Int(self.rd.read_be_i64()),
+      0xd4 .. 0xd9 => fail ~"Reserved",
+      0xda         => self.parse_raw(self.rd.read_be_u16() as uint),
+      0xdb         => self.parse_raw(self.rd.read_be_u32() as uint),
+      0xdc         => self.parse_array(self.rd.read_be_u16() as uint),
+      0xdd         => self.parse_array(self.rd.read_be_u32() as uint),
+      0xde         => self.parse_map(self.rd.read_be_u16() as uint),
+      0xdf         => self.parse_map(self.rd.read_be_u32() as uint),
+      0xe0 .. 0xff => Int((c as i8) as i64),
+      _            => fail ~"Invalid"
     }
   }
 
