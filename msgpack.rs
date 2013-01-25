@@ -2,7 +2,6 @@ extern mod std;
 
 use core::io::{WriterUtil,ReaderUtil};
 use core::path::Path;
-use core::cast::reinterpret_cast;
 
 use std::*;
 
@@ -252,12 +251,12 @@ pub impl Encoder: serialize::Encoder {
 
   fn emit_f32(&self, v: f32) {
     self.wr.write_u8(0xca);
-    unsafe { self.wr.write_be_u32(reinterpret_cast(&v)); }
+    unsafe { self.wr.write_be_u32(cast::transmute(v)); }
   }
 
   fn emit_f64(&self, v: f64) {
     self.wr.write_u8(0xcb);
-    unsafe { self.wr.write_be_u64(reinterpret_cast(&v)); }
+    unsafe { self.wr.write_be_u64(cast::transmute(v)); }
   }
 
   fn emit_float(&self, v: float) {
