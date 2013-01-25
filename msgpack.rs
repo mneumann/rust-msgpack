@@ -64,8 +64,11 @@ priv fn can_cast_u16_to_u8(v : u16) -> bool {
   (v & 0xFF00 == 0)
 }
 
-priv fn conv_float(v: u32) -> f32 { unsafe { reinterpret_cast(&v) } }
-priv fn conv_double(v: u64) -> f64 { unsafe { reinterpret_cast(&v) } }
+#[inline(always)]
+priv fn conv_float(v: u32) -> f32 unsafe { cast::transmute(v) }
+
+#[inline(always)]
+priv fn conv_double(v: u64) -> f64 unsafe { cast::transmute(v) }
 
 impl Encoder {
 
@@ -367,6 +370,7 @@ impl Decoder {
     c as u8
   }
 
+  #[inline(always)]
   fn _read_unsigned(&self) -> u64 {
     let c = self._read_byte();
     match c {
@@ -379,14 +383,32 @@ impl Decoder {
     }
   }
 
+  #[inline(always)]
+  fn _read_signed(&self) -> i64 {
+    let c = self._read_byte();
+    match c {
+      0xd0         => self.rd.read_i8() as i64,
+      0xd1         => self.rd.read_be_i16() as i64,
+      0xd2         => self.rd.read_be_i32() as i64,
+      0xd3         => self.rd.read_be_i64(),
+      0xe0 .. 0xff => (c as i8) as i64,
+      _            => fail ~"No signed integer"
+    }
+  }
+
+  #[inline(always)]
   fn _read_raw(&self, len: uint) -> ~[u8] {
     self.rd.read_bytes(len)
   }
 
-  fn _read_str(&self, len: uint) -> ~str {
-    str::from_bytes(self.rd.read_bytes(len))
+  #[inline(always)]
+  fn _read_str(&self, len: uint) -> ~str unsafe {
+    // XXX: add NUL byte!
+    cast::transmute(self.rd.read_bytes(len))
+    //str::from_bytes(self.rd.read_bytes(len))
   }
 
+  #[inline(always)]
   fn _read_vec_len(&self) -> uint {
     let c = self._read_byte();
     match c {
@@ -396,31 +418,60 @@ impl Decoder {
       _            => fail
     }
   }
+
+  #[inline(always)]
+  fn _read_map_len(&self) -> uint {
+    let c = self._read_byte();
+    match c {
+      0x80 .. 0x8f => c as uint & 0x0F,
+      0xde         => self.rd.read_be_u16() as uint,
+      0xdf         => self.rd.read_be_u32() as uint,
+      _            => fail
+    }
+  }
+
+  #[inline(always)]
+  fn _read_elt_len(&self) -> uint {
+    let c = self._read_byte();
+    match c {
+      0x80 .. 0x9f => c as uint & 0x0F,
+      0xdc | 0xde  => self.rd.read_be_u16() as uint,
+      0xdd | 0xdf  => self.rd.read_be_u32() as uint,
+      _            => fail
+    }
+  }
+
 }
 
 pub impl Decoder: serialize::Decoder {
-
+    #[inline(always)]
     fn read_nil(&self) -> () {
       if self.rd.read_byte() != 0xc0 { fail }
     }
 
-    // XXX
-    fn read_uint(&self) -> uint { 0 }
+    #[inline(always)]
+    fn read_uint(&self) -> uint {
+      self._read_unsigned() as uint // XXX
+    }
 
+    #[inline(always)]
     fn read_u64(&self) -> u64 { self._read_unsigned() }
 
+    #[inline(always)]
     fn read_u32(&self) -> u32 {
       let v = self._read_unsigned();
       if !can_cast_u64_to_u32(v) { fail }
       v as u32
     }
 
+    #[inline(always)]
     fn read_u16(&self) -> u16 {
       let v = self._read_unsigned();
       if !can_cast_u64_to_u16(v) { fail }
       v as u16
     }
 
+    #[inline(always)]
     fn read_u8(&self) -> u8 {
       let v = self._read_unsigned();
       if !can_cast_u64_to_u8(v) { fail }
@@ -428,12 +479,18 @@ pub impl Decoder: serialize::Decoder {
     }
 
     // XXX
-    fn read_int(&self) -> int { 0 }
-    fn read_i64(&self) -> i64 { 0 }
-    fn read_i32(&self) -> i32 { 0 }
-    fn read_i16(&self) -> i16 { 0 }
-    fn read_i8(&self) -> i8 { 0 }
+    #[inline(always)]
+    fn read_int(&self) -> int { self._read_signed() as int }
+    #[inline(always)]
+    fn read_i64(&self) -> i64 { self._read_signed() }
+    #[inline(always)]
+    fn read_i32(&self) -> i32 { self._read_signed() as i32 }
+    #[inline(always)]
+    fn read_i16(&self) -> i16 { self._read_signed() as i16 }
+    #[inline(always)]
+    fn read_i8(&self) -> i8 { self._read_signed() as i8 }
 
+    #[inline(always)]
     fn read_bool(&self) -> bool {
       match self.rd.read_byte() {
         0xc2 => false,
@@ -442,6 +499,7 @@ pub impl Decoder: serialize::Decoder {
       }
     }
 
+    #[inline(always)]
     fn read_f64(&self) -> f64 {
       match self.rd.read_byte() {
         0xcb => conv_double(self.rd.read_be_u64()),
@@ -449,6 +507,7 @@ pub impl Decoder: serialize::Decoder {
       }
     }
 
+    #[inline(always)]
     fn read_f32(&self) -> f32 {
       match self.rd.read_byte() {
         0xca => conv_float(self.rd.read_be_u32()),
@@ -456,16 +515,17 @@ pub impl Decoder: serialize::Decoder {
       }
     }
 
-    // XXX
+    #[inline(always)]
     fn read_float(&self) -> float {
-      0.0
+      self.read_f64() as float // XXX
     }
 
-    // XXX
+    #[inline(always)]
     fn read_char(&self) -> char {
-      fail
+      fail // XXX
     }
 
+    #[inline(always)]
     fn read_owned_str(&self) -> ~str {
       let c = self._read_byte();
       match c {
@@ -476,6 +536,7 @@ pub impl Decoder: serialize::Decoder {
       }
     }
 
+    #[inline(always)]
     fn read_managed_str(&self) -> @str {
       self.read_owned_str().to_managed()
     }
@@ -484,29 +545,42 @@ pub impl Decoder: serialize::Decoder {
     fn read_enum_variant<T>(&self, f: fn(uint) -> T) -> T { fail }
     fn read_enum_variant_arg<T>(&self, idx: uint, f: fn() -> T) -> T { fail }
 
+    #[inline(always)]
     fn read_owned<T>(&self, f: fn() -> T) -> T { f() }
+    #[inline(always)]
     fn read_managed<T>(&self, f: fn() -> T) -> T { f() }
 
+    // XXX: In case of a map, the number of elements will be /2.
+    #[inline(always)]
     fn read_owned_vec<T>(&self, f: fn(uint) -> T) -> T {
-      f(self._read_vec_len())
+      f(self._read_elt_len())
     }
 
+    // XXX: In case of a map, the number of elements will be /2.
+    #[inline(always)]
     fn read_managed_vec<T>(&self, f: fn(uint) -> T) -> T {
-      f(self._read_vec_len())
+      f(self._read_elt_len())
     }
     
+    #[inline(always)]
     fn read_vec_elt<T>(&self, _idx: uint, f: fn() -> T) -> T { f() }
 
     fn read_rec<T>(&self, f: fn() -> T) -> T { fail }
 
+    #[inline(always)]
     fn read_struct<T>(&self, _name: &str, len: uint, f: fn() -> T) -> T {
       if len != self._read_vec_len() { fail }
       f()
     }
 
-    fn read_field<T>(&self, _name: &str, _idx: uint, f: fn() -> T) -> T { f() }
+    #[inline(always)]
+    fn read_field<T>(&self, _name: &str, _idx: uint, f: fn() -> T) -> T {
+      f()
+    }
 
+    #[inline(always)]
     fn read_tup<T>(&self, sz: uint, f: fn() -> T) -> T { fail }
+    #[inline(always)]
     fn read_tup_elt<T>(&self, idx: uint, f: fn() -> T) -> T { fail }
 }
 
@@ -569,10 +643,33 @@ impl Decoder {
   }
 }
 
-fn doit(bytes: &[u8]) -> Value {
-  let br = io::BytesReader { bytes: bytes, pos: 0 };
-  let parser = Decoder { rd: br as io::Reader };
-  parser.parse()
+struct MapItem<K, V> {
+  key: K,
+  val: V
+}
+
+impl<K,V> MapItem<K,V> {
+  static fn mk(k: K, v: V) -> MapItem<K,V> {
+    MapItem {key: k, val: v}
+  }
+}
+
+pub impl<D: serialize::Decoder,
+         K: serialize::Decodable<D>,
+         V: serialize::Decodable<D>> MapItem<K,V>: serialize::Decodable<D> {
+  #[inline(always)]
+  static fn decode(&self, d: &D) -> MapItem<K,V> {
+    MapItem {key: Decodable::decode(d), val: Decodable::decode(d)}
+  }
+}
+
+pub impl<S: serialize::Encoder,
+         K: serialize::Encodable<S>,
+         V: serialize::Encodable<S>> MapItem<K,V>: serialize::Encodable<S> {
+  fn encode(&self, s: &S) {
+    self.key.encode(s);
+    self.val.encode(s)
+  }
 }
 
 #[auto_encode]
@@ -581,7 +678,8 @@ struct Blah {
   f: u8,
   g: u16,
   i: ~str,
-  a: ~[u32]
+  a: ~[u32],
+  c: ~[MapItem<u32, u32>]
 }
 
 fn decod(bytes: &[u8]) {
@@ -591,14 +689,13 @@ fn decod(bytes: &[u8]) {
   io::println(fmt!("%?", a));
 }
 
-
 fn main() {
   {
     let res = io::buffered_file_writer(&Path("test.msgpack"));
     if res.is_ok() {
       let enc = Encoder { wr: res.unwrap() };
-      let blah = Blah { f: 1, g: 2, i: ~"hallo", a: ~[] }; 
-      let blub = Blah { f: 5, g: 1, i: ~"nochwas", a: ~[1,2,3] }; 
+      let blah = Blah { f: 1, g: 2, i: ~"hallo", a: ~[], c: ~[MapItem::mk(1,2)] }; 
+      let blub = Blah { f: 5, g: 1, i: ~"nochwas", a: ~[1,2,3], c: ~[MapItem::mk(1,2)] }; 
       let b = ~[blah, blub];
       b.encode(&enc);
       //5.encode(&enc);
@@ -607,17 +704,8 @@ fn main() {
   }
 
   let bytes: ~[u8] = result::unwrap(io::read_whole_file(&Path("test.msgpack")));
-  decod(bytes);
-
-/*
-
-  let bytes: ~[u8] = result::unwrap(io::read_whole_file(&Path("Matching.msgpack")));
   let b = time::precise_time_ns();
-  doit(bytes);
-  let e = time::precise_time_ns();
-
-  let total = e - b;
-
-  io::println(fmt!("%?", total));
-*/
+  decod(bytes);
+  let total = time::precise_time_ns() - b;
+  io::println(fmt!("%?", total / 1000000));
 }
