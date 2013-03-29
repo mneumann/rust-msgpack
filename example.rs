@@ -1,14 +1,10 @@
 extern mod std;
+extern mod msgpack;
 
-use core::io::{WriterUtil,ReaderUtil};
 use core::path::Path;
 
 use std::*;
-
 use std::serialize::*;
-
-mod msgpack;
-
 
 struct MapItem<K, V> {
   key: K,
@@ -16,23 +12,23 @@ struct MapItem<K, V> {
 }
 
 impl<K,V> MapItem<K,V> {
-  static fn mk(k: K, v: V) -> MapItem<K,V> {
+  fn mk(k: K, v: V) -> MapItem<K,V> {
     MapItem {key: k, val: v}
   }
 }
 
-pub impl<D: serialize::Decoder,
-         K: serialize::Decodable<D>,
-         V: serialize::Decodable<D>> MapItem<K,V>: serialize::Decodable<D> {
+impl<D: serialize::Decoder,
+     K: serialize::Decodable<D>,
+     V: serialize::Decodable<D>> serialize::Decodable<D> for MapItem<K,V> {
   #[inline(always)]
-  static fn decode(&self, d: &D) -> MapItem<K,V> {
+  fn decode(d: &D) -> MapItem<K,V> {
     MapItem {key: Decodable::decode(d), val: Decodable::decode(d)}
   }
 }
 
-pub impl<S: serialize::Encoder,
-         K: serialize::Encodable<S>,
-         V: serialize::Encodable<S>> MapItem<K,V>: serialize::Encodable<S> {
+impl<S: serialize::Encoder,
+     K: serialize::Encodable<S>,
+     V: serialize::Encodable<S>> serialize::Encodable<S> for MapItem<K,V> {
   fn encode(&self, s: &S) {
     self.key.encode(s);
     self.val.encode(s)
@@ -50,9 +46,10 @@ struct Blah {
 }
 
 fn decod(bytes: &[u8]) {
-  let br = io::BytesReader { bytes: bytes, pos: 0 };
-  let parser = msgpack::Decoder { rd: br as io::Reader };
-  let a: ~[~Blah] = serialize::Decodable::decode(&parser);
+  let a: ~[~Blah] = do io::with_bytes_reader(bytes) |rd| {
+    let parser = msgpack::Decoder::new(rd);
+    serialize::Decodable::decode(&parser)
+  };
   io::println(fmt!("%?", a));
 }
 
