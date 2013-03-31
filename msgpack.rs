@@ -383,11 +383,7 @@ pub impl Decoder {
 
   #[inline(always)]
   fn _read_str(&self, len: uint) -> ~str {
-    unsafe {
-      // XXX: add NUL byte!
-      cast::transmute(self.rd.read_bytes(len))
-      //str::from_bytes(self.rd.read_bytes(len))
-    }
+    str::from_bytes(self.rd.read_bytes(len))
   }
 
   #[inline(always)]
@@ -633,8 +629,9 @@ mod tests {
 
     #[test]
     fn test_circular_str() {
-        let v = ~"abcdef";
-        assert_eq!(copy v, from_msgpack(to_msgpack(&v)));
+        assert_eq!(~"", from_msgpack(to_msgpack(&~"")));
+        assert_eq!(~"a", from_msgpack(to_msgpack(&~"a")));
+        assert_eq!(~"abcdef", from_msgpack(to_msgpack(&~"abcdef")));
     }
 
     #[test]
