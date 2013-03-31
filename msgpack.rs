@@ -296,7 +296,7 @@ impl serialize::Encoder for Encoder {
   //
 
   fn emit_struct(&self, _name: &str, len: uint, f: &fn()) {
-    self._emit_vec_len(len);
+    self._emit_map_len(len);
     f();
   }
 
@@ -332,9 +332,12 @@ impl serialize::Encoder for Encoder {
   fn emit_option_none(&self) { fail!() }
   fn emit_option_some(&self, _f: &fn()) { fail!() }
 
-  fn emit_map(&self, _len: uint, _f: &fn()) { fail!() }
-  fn emit_map_elt_key(&self, _idx: uint, _f: &fn()) { fail!() }
-  fn emit_map_elt_val(&self, _idx: uint, _f: &fn()) { fail!() }
+  fn emit_map(&self, len: uint, f: &fn()) {
+    self._emit_map_len(len);
+    f()
+  }
+  fn emit_map_elt_key(&self, _idx: uint, f: &fn()) { f() }
+  fn emit_map_elt_val(&self, _idx: uint, f: &fn()) { f() }
 }
 
 pub impl Decoder {
@@ -530,7 +533,7 @@ impl serialize::Decoder for Decoder {
 
     #[inline(always)]
     fn read_struct<T>(&self, _name: &str, len: uint, f: &fn() -> T) -> T {
-      if len != self._read_vec_len() { fail!() }
+      if len != self._read_map_len() { fail!() }
       f()
     }
 
@@ -541,9 +544,11 @@ impl serialize::Decoder for Decoder {
 
     fn read_option<T>(&self, _f: &fn(bool) -> T) -> T { fail!() }
 
-    fn read_map<T>(&self, _f: &fn(uint) -> T) -> T { fail!() }
-    fn read_map_elt_key<T>(&self, _idx: uint, _f: &fn() -> T) -> T { fail!() }
-    fn read_map_elt_val<T>(&self, _idx: uint, _f: &fn() -> T) -> T { fail!() }
+    fn read_map<T>(&self, f: &fn(uint) -> T) -> T {
+        f(self._read_map_len())
+    }
+    fn read_map_elt_key<T>(&self, _idx: uint, f: &fn() -> T) -> T { f() }
+    fn read_map_elt_val<T>(&self, _idx: uint, f: &fn() -> T) -> T { f() }
 
 }
 
@@ -604,4 +609,63 @@ impl Decoder {
       _            => fail!(~"Invalid")
     }
   }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use core::hashmap::linear::LinearMap;
+    use std::serialize::{Decodable, Encodable};
+
+    fn to_msgpack<T: Encodable<Encoder>>(t: &T) -> ~[u8] {
+        do io::with_bytes_writer |wr| {
+            let encoder = Encoder::new(wr);
+            t.encode(&encoder);
+        }
+    }
+
+    fn from_msgpack<T: Decodable<Decoder>>(bytes: ~[u8]) -> T {
+        do io::with_bytes_reader(bytes) |rd| {
+            let decoder = Decoder::new(rd);
+            Decodable::decode(&decoder)
+        }
+    }
+
+    #[test]
+    fn test_circular_str() {
+        let v = ~"abcdef";
+        assert_eq!(copy v, from_msgpack(to_msgpack(&v)));
+    }
+
+    #[test]
+    fn test_circular_int() {
+        assert_eq!(123, from_msgpack(to_msgpack(&123)));
+        assert_eq!(-123, from_msgpack(to_msgpack(&-123)));
+    }
+
+    #[test]
+    fn test_circular_float() {
+        let v = -1243.111;
+        assert_eq!(copy v, from_msgpack(to_msgpack(&v)));
+    }
+
+    #[test]
+    fn test_circular_bool() {
+        assert_eq!(true, from_msgpack(to_msgpack(&true)));
+        assert_eq!(false, from_msgpack(to_msgpack(&false)));
+    }
+
+    #[test]
+    fn test_circular_list() {
+        let v = ~[1, 2, 3];
+        assert_eq!(copy v, from_msgpack(to_msgpack(&v)));
+    }
+
+    #[test]
+    fn test_circular_map() {
+        let mut v = LinearMap::new();
+        v.insert(1, 2);
+        v.insert(3, 4);
+        assert_eq!(copy v, from_msgpack(to_msgpack(&v)));
+    }
 }
