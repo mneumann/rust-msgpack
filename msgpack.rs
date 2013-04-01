@@ -13,7 +13,8 @@ pub struct Encoder {
 }
 
 pub struct Decoder {
-  rd: @io::Reader
+  rd: @io::Reader,
+  next_byte: @mut Option<u8>,
 }
 
 #[inline(always)]
@@ -195,7 +196,6 @@ pub impl Encoder {
       self.wr.write_be_u32(len as u32);
     }
   }
-
 }
 
 impl serialize::Encoder for Encoder {
@@ -328,9 +328,9 @@ impl serialize::Encoder for Encoder {
     }
   }
 
-  fn emit_option(&self, _f: &fn()) { fail!() }
-  fn emit_option_none(&self) { fail!() }
-  fn emit_option_some(&self, _f: &fn()) { fail!() }
+  fn emit_option(&self, f: &fn()) { f() }
+  fn emit_option_none(&self) { self.emit_nil() }
+  fn emit_option_some(&self, f: &fn()) { f() }
 
   fn emit_map(&self, len: uint, f: &fn()) {
     self._emit_map_len(len);
@@ -341,13 +341,39 @@ impl serialize::Encoder for Encoder {
 }
 
 pub impl Decoder {
-  fn new(rd: @io::Reader) -> Decoder { Decoder { rd: rd } }
+  fn new(rd: @io::Reader) -> Decoder {
+    Decoder {
+      rd: rd,
+      next_byte: @mut None,
+    }
+  }
+}
+
+priv impl Decoder {
+  #[inline(always)]
+  fn _peek_byte(&self) -> u8 {
+    match *self.next_byte {
+      Some(byte) => byte,
+      None => {
+        let byte = self.rd.read_byte();
+        if (byte < 0) { fail!() }
+        let byte = byte as u8;
+        *self.next_byte = Some(byte);
+        byte
+      }
+    }
+  }
 
   #[inline(always)]
   fn _read_byte(&self) -> u8 {
-    let c = self.rd.read_byte();
-    if (c < 0) { fail!() }
-    c as u8
+    match *self.next_byte {
+      Some(byte) => { *self.next_byte = None; byte },
+      None => {
+        let byte = self.rd.read_byte();
+        if (byte < 0) { fail!() }
+        byte as u8
+      }
+    }
   }
 
   #[inline(always)]
@@ -424,7 +450,7 @@ pub impl Decoder {
 impl serialize::Decoder for Decoder {
     #[inline(always)]
     fn read_nil(&self) -> () {
-      if self.rd.read_byte() != 0xc0 { fail!() }
+      if self._read_byte() != 0xc0 { fail!() }
     }
 
     #[inline(always)]
@@ -470,7 +496,7 @@ impl serialize::Decoder for Decoder {
 
     #[inline(always)]
     fn read_bool(&self) -> bool {
-      match self.rd.read_byte() {
+      match self._read_byte() {
         0xc2 => false,
         0xc3 => true,
         _    => fail!()
@@ -479,7 +505,7 @@ impl serialize::Decoder for Decoder {
 
     #[inline(always)]
     fn read_f64(&self) -> f64 {
-      match self.rd.read_byte() {
+      match self._read_byte() {
         0xcb => conv_double(self.rd.read_be_u64()),
         _ => fail!()
       }
@@ -487,7 +513,7 @@ impl serialize::Decoder for Decoder {
 
     #[inline(always)]
     fn read_f32(&self) -> f32 {
-      match self.rd.read_byte() {
+      match self._read_byte() {
         0xca => conv_float(self.rd.read_be_u32()),
         _ => fail!()
       }
@@ -521,7 +547,7 @@ impl serialize::Decoder for Decoder {
     // XXX: In case of a map, the number of elements will be /2.
     #[inline(always)]
     fn read_seq<T>(&self, f: &fn(uint) -> T) -> T {
-      f(self._read_elt_len())
+      f(self._read_vec_len())
     }
     
     #[inline(always)]
@@ -538,7 +564,12 @@ impl serialize::Decoder for Decoder {
       f()
     }
 
-    fn read_option<T>(&self, _f: &fn(bool) -> T) -> T { fail!() }
+    fn read_option<T>(&self, f: &fn(bool) -> T) -> T {
+      match self._peek_byte() {
+        0xc0 => f(false),
+        _ => f(true)
+      }
+    }
 
     fn read_map<T>(&self, f: &fn(uint) -> T) -> T {
         f(self._read_map_len())
@@ -663,6 +694,15 @@ mod tests {
         let mut v = LinearMap::new();
         v.insert(1, 2);
         v.insert(3, 4);
+        assert_eq!(copy v, from_msgpack(to_msgpack(&v)));
+    }
+
+    #[test]
+    fn test_circular_option() {
+        let mut v = Some(1);
+        assert_eq!(copy v, from_msgpack(to_msgpack(&v)));
+
+        v = None;
         assert_eq!(copy v, from_msgpack(to_msgpack(&v)));
     }
 }
