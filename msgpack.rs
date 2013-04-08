@@ -433,18 +433,6 @@ priv impl Decoder {
       _            => fail!()
     }
   }
-
-  #[inline(always)]
-  fn _read_elt_len(&self) -> uint {
-    let c = self._read_byte();
-    match c {
-      0x80 .. 0x9f => c as uint & 0x0F,
-      0xdc | 0xde  => self.rd.read_be_u16() as uint,
-      0xdd | 0xdf  => self.rd.read_be_u32() as uint,
-      _            => fail!()
-    }
-  }
-
 }
 
 impl serialize::Decoder for Decoder {
@@ -555,7 +543,7 @@ impl serialize::Decoder for Decoder {
 
     #[inline(always)]
     fn read_struct<T>(&self, _name: &str, len: uint, f: &fn() -> T) -> T {
-      if len != self._read_map_len() { fail!() }
+      if len != self._read_vec_len() { fail!() }
       f()
     }
 
