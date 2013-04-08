@@ -7,37 +7,6 @@ use core::hashmap::linear::LinearMap;
 use std::time;
 use std::serialize::{Decoder, Decodable, Encoder, Encodable};
 
-/*
-struct MapItem<K, V> {
-  key: K,
-  val: V
-}
-
-impl<K,V> MapItem<K,V> {
-  fn mk(k: K, v: V) -> MapItem<K,V> {
-    MapItem {key: k, val: v}
-  }
-}
-
-impl<D: Decoder,
-     K: Decodable<D>,
-     V: Decodable<D>> Decodable<D> for MapItem<K,V> {
-  #[inline(always)]
-  fn decode(d: &D) -> MapItem<K,V> {
-    MapItem {key: Decodable::decode(d), val: Decodable::decode(d)}
-  }
-}
-
-impl<S: Encoder,
-     K: Encodable<S>,
-     V: Encodable<S>> Encodable<S> for MapItem<K,V> {
-  fn encode(&self, s: &S) {
-    self.key.encode(s);
-    self.val.encode(s)
-  }
-}
-*/
-
 #[auto_encode]
 #[auto_decode]
 struct Blah {
