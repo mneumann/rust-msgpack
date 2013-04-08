@@ -1,43 +1,42 @@
 extern mod std;
+extern mod msgpack;
 
-use core::io::{WriterUtil,ReaderUtil};
 use core::path::Path;
+use core::hashmap::linear::LinearMap;
 
-use std::*;
+use std::time;
+use std::serialize::{Decoder, Decodable, Encoder, Encodable};
 
-use std::serialize::*;
-
-mod msgpack;
-
-
+/*
 struct MapItem<K, V> {
   key: K,
   val: V
 }
 
 impl<K,V> MapItem<K,V> {
-  static fn mk(k: K, v: V) -> MapItem<K,V> {
+  fn mk(k: K, v: V) -> MapItem<K,V> {
     MapItem {key: k, val: v}
   }
 }
 
-pub impl<D: serialize::Decoder,
-         K: serialize::Decodable<D>,
-         V: serialize::Decodable<D>> MapItem<K,V>: serialize::Decodable<D> {
+impl<D: Decoder,
+     K: Decodable<D>,
+     V: Decodable<D>> Decodable<D> for MapItem<K,V> {
   #[inline(always)]
-  static fn decode(&self, d: &D) -> MapItem<K,V> {
+  fn decode(d: &D) -> MapItem<K,V> {
     MapItem {key: Decodable::decode(d), val: Decodable::decode(d)}
   }
 }
 
-pub impl<S: serialize::Encoder,
-         K: serialize::Encodable<S>,
-         V: serialize::Encodable<S>> MapItem<K,V>: serialize::Encodable<S> {
+impl<S: Encoder,
+     K: Encodable<S>,
+     V: Encodable<S>> Encodable<S> for MapItem<K,V> {
   fn encode(&self, s: &S) {
     self.key.encode(s);
     self.val.encode(s)
   }
 }
+*/
 
 #[auto_encode]
 #[auto_decode]
@@ -46,13 +45,14 @@ struct Blah {
   g: u16,
   i: ~str,
   a: ~[u32],
-  c: ~[MapItem<u32, u32>]
+  c: LinearMap<u32, u32>
 }
 
 fn decod(bytes: &[u8]) {
-  let br = io::BytesReader { bytes: bytes, pos: 0 };
-  let parser = msgpack::Decoder { rd: br as io::Reader };
-  let a: ~[~Blah] = serialize::Decodable::decode(&parser);
+  let a: ~[~Blah] = do io::with_bytes_reader(bytes) |rd| {
+    let parser = msgpack::Decoder::new(rd);
+    Decodable::decode(&parser)
+  };
   io::println(fmt!("%?", a));
 }
 
@@ -60,9 +60,12 @@ fn main() {
   {
     let res = io::buffered_file_writer(&Path("test.msgpack"));
     if res.is_ok() {
+      let mut c = LinearMap::new();
+      c.insert(1_u32, 2_u32);
+
       let enc = msgpack::Encoder { wr: res.unwrap() };
-      let blah = Blah { f: 1, g: 2, i: ~"hallo", a: ~[], c: ~[MapItem::mk(1,2)] }; 
-      let blub = Blah { f: 5, g: 1, i: ~"nochwas", a: ~[1,2,3], c: ~[MapItem::mk(1,2)] }; 
+      let blah = Blah { f: 1, g: 2, i: ~"hallo", a: ~[], c: copy c };
+      let blub = Blah { f: 5, g: 1, i: ~"nochwas", a: ~[1,2,3], c: copy c };
       let b = ~[blah, blub];
       b.encode(&enc);
       //5.encode(&enc);
