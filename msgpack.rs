@@ -514,7 +514,9 @@ impl serialize::Decoder for Decoder {
 
     #[inline(always)]
     fn read_char(&self) -> char {
-      fail!() // XXX
+      let s = self.read_str();
+      if str::char_len(s) != 1 { fail!(~"no character") }
+      str::char_at(s, 0)
     }
 
     #[inline(always)]
@@ -532,7 +534,6 @@ impl serialize::Decoder for Decoder {
     fn read_enum_variant<T>(&self, _names: &[&str], _f: &fn(uint) -> T) -> T { fail!() }
     fn read_enum_variant_arg<T>(&self, _idx: uint, _f: &fn() -> T) -> T { fail!() }
 
-    // XXX: In case of a map, the number of elements will be /2.
     #[inline(always)]
     fn read_seq<T>(&self, f: &fn(uint) -> T) -> T {
       f(self._read_vec_len())
@@ -693,4 +694,12 @@ mod tests {
         v = None;
         assert_eq!(copy v, from_msgpack(to_msgpack(&v)));
     }
+
+    /*
+    #[test]
+    fn test_circular_char() {
+      let a: char = str::char_at("a", 0);
+      assert_eq!(a, from_msgpack(to_msgpack(&a)))
+    }
+    */
 }
