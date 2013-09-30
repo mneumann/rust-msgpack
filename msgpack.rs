@@ -76,7 +76,10 @@ fn conv_float(v: u32) -> f32 { unsafe { cast::transmute(v) } }
 fn conv_double(v: u64) -> f64 { unsafe { cast::transmute(v) } }
 
 impl Encoder {
-  pub fn new(wr: @std::io::Writer) -> Encoder { Encoder { wr: wr } }
+  pub fn new(wr: @std::io::Writer) -> Encoder { 
+    println!("in encoder::new");
+    Encoder { wr: wr } 
+  }
 
   #[inline(always)]
   fn _emit_u8(&self, v: u8) {
@@ -452,7 +455,8 @@ impl Decoder {
       0x90 .. 0x9f => c as uint & 0x0F,
       0xdc         => self.rd.read_be_u16() as uint,
       0xdd         => self.rd.read_be_u32() as uint,
-      _            => fail!()
+      0x85         => fail!("what do I do with 0x85 now?"),
+	_            => fail!("unimplmeneted _read_vec_len() byte code: %?", c)
     }
   }
 
@@ -557,8 +561,14 @@ impl serialize::Decoder for Decoder {
       let c = self._read_byte();
       match c {
         0xa0 .. 0xbf => self._read_str(c as uint & 0x1F),
-        0xda         => self._read_str(self.rd.read_be_u16() as uint),
-        0xdb         => self._read_str(self.rd.read_be_u32() as uint),
+        0xda         => {
+	  let b : uint = self.rd.read_be_u16() as uint;
+	  self._read_str(b)
+	},
+	  0xdb         => {
+	    let b : uint = self.rd.read_be_u32() as uint;
+	    self._read_str(b)
+	  },
         _            => fail!()
       }
     }
@@ -569,7 +579,9 @@ impl serialize::Decoder for Decoder {
 
     #[inline(always)]
     fn read_seq<T>(&mut self, f: &fn(&mut Decoder,uint) -> T) -> T {
-      f(self, self._read_vec_len())
+      println!("in read_seq.");
+      let len = self._read_vec_len();
+      f(self, len)
     }
     
     #[inline(always)]
@@ -594,7 +606,8 @@ impl serialize::Decoder for Decoder {
     }
 
     fn read_map<T>(&mut self, f: &fn(&mut Decoder, uint) -> T) -> T {
-        f(self, self._read_map_len())
+      let len = self._read_map_len();
+      f(self, len)
     }
     fn read_map_elt_key<T>(&mut self, _idx: uint, f: &fn(&mut Decoder) -> T) -> T { f(self) }
     fn read_map_elt_val<T>(&mut self, _idx: uint, f: &fn(&mut Decoder) -> T) -> T { f(self) }
@@ -673,6 +686,7 @@ impl Decoder {
 
   fn parse(&mut self) -> Value {
     let c = self.rd.read_byte();
+    printfln!("in parse: read value %x",c as uint);
     if (c < 0) {
       fail!()
     }
@@ -697,12 +711,12 @@ impl Decoder {
       0xd2         => Int(self.rd.read_be_i32() as i64),
       0xd3         => Int(self.rd.read_be_i64()),
       0xd4 .. 0xd9 => fail!(~"Reserved"),
-      0xda         => Raw(self._read_raw(self.rd.read_be_u16() as uint)),
-      0xdb         => Raw(self._read_raw(self.rd.read_be_u32() as uint)),
-      0xdc         => self.parse_array(self.rd.read_be_u16() as uint),
-      0xdd         => self.parse_array(self.rd.read_be_u32() as uint),
-      0xde         => self.parse_map(self.rd.read_be_u16() as uint),
-      0xdf         => self.parse_map(self.rd.read_be_u32() as uint),
+      0xda         => { let b = self.rd.read_be_u16() as uint; Raw(self._read_raw(b)) },
+      0xdb         => { let b = self.rd.read_be_u32() as uint; Raw(self._read_raw(b)) },
+      0xdc         => { let b = self.rd.read_be_u16() as uint; self.parse_array(b) },
+      0xdd         => { let b = self.rd.read_be_u32() as uint; self.parse_array(b) },
+      0xde         => { let b = self.rd.read_be_u16() as uint; self.parse_map(b) },
+      0xdf         => { let b = self.rd.read_be_u32() as uint; self.parse_map(b) },
       0xe0 .. 0xff => Int((c as i8) as i64),
       _            => fail!(~"Invalid")
     }
@@ -712,20 +726,20 @@ impl Decoder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core::hashmap::linear::LinearMap;
-    use std::serialize::{Decodable, Encodable};
+    use std::hashmap::HashMap;
+    use extra::serialize::{Decodable, Encodable};
 
     fn to_msgpack<T: Encodable<Encoder>>(t: &T) -> ~[u8] {
-        do io::with_bytes_writer |wr| {
-            let encoder = Encoder::new(wr);
-            t.encode(&encoder);
+        do std::io::with_bytes_writer |wr| {
+            let mut encoder = Encoder::new(wr);
+            t.encode(&mut encoder);
         }
     }
 
     fn from_msgpack<T: Decodable<Decoder>>(bytes: ~[u8]) -> T {
-        do io::with_bytes_reader(bytes) |rd| {
-            let decoder = Decoder::new(rd);
-            Decodable::decode(&decoder)
+        do std::io::with_bytes_reader(bytes) |rd| {
+            let mut decoder = Decoder::new(rd);
+            Decodable::decode(&mut decoder)
         }
     }
 
@@ -745,9 +759,8 @@ mod tests {
     #[test]
     fn test_circular_float() {
         let v = -1243.111;
-        assert_eq!(copy v, from_msgpack(to_msgpack(&v)));
+        assert_eq!(v, from_msgpack(to_msgpack(&v)));
     }
-
     #[test]
     fn test_circular_bool() {
         assert_eq!(true, from_msgpack(to_msgpack(&true)));
@@ -757,24 +770,26 @@ mod tests {
     #[test]
     fn test_circular_list() {
         let v = ~[1, 2, 3];
-        assert_eq!(copy v, from_msgpack(to_msgpack(&v)));
+        assert_eq!(v.clone(), from_msgpack(to_msgpack(&v)));
     }
 
     #[test]
     fn test_circular_map() {
-        let mut v = LinearMap::new();
+        let mut v = HashMap::new();
         v.insert(1, 2);
         v.insert(3, 4);
-        assert_eq!(copy v, from_msgpack(to_msgpack(&v)));
+        assert_eq!(v.clone(), from_msgpack(to_msgpack(&v)));
     }
 
     #[test]
     fn test_circular_option() {
         let mut v = Some(1);
-        assert_eq!(copy v, from_msgpack(to_msgpack(&v)));
+        let mut w : Option<int> = from_msgpack(to_msgpack(&v));
+
+        assert_eq!(w, v);
 
         v = None;
-        assert_eq!(copy v, from_msgpack(to_msgpack(&v)));
+        assert_eq!(v.clone(), from_msgpack(to_msgpack(&v)));
     }
 
     /*
