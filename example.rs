@@ -20,12 +20,13 @@ struct Blah {
   c: HashMap<u32, u32>
 }
 
-pub fn decod(bytes: &[u8]) {
+pub fn decod(bytes: &[u8]) -> ~[~Blah] {
   let a: ~[~Blah] = do std::io::with_bytes_reader(bytes) |rd| {
     let mut parser = msgpack::Decoder::new(rd);
     Decodable::decode(&mut parser)
   };
   printfln!("%?", a);
+  a
 }
 
 fn main() {
@@ -48,7 +49,16 @@ fn main() {
 
   let bytes: ~[u8] = std::io::read_whole_file(&Path("test.msgpack")).unwrap();
   let b = time::precise_time_ns();
-  decod(bytes);
+  let reifiedVec = decod(bytes);
+  let reified = reifiedVec[0];
+
+  printfln!("reified.f = %?", reified.f);
+  printfln!("reified.g = %?", reified.g);
+  printfln!("reified.i = %?", reified.i);
+  printfln!("reified.a = %?", reified.a);
+  printfln!("reified.c.get(1) = %?", reified.c.get(&1));
+
   let total = time::precise_time_ns() - b;
   printfln!("%?", total / 1000000);
+
 }
