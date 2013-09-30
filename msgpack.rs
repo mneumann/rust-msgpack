@@ -77,7 +77,7 @@ fn conv_double(v: u64) -> f64 { unsafe { cast::transmute(v) } }
 
 impl Encoder {
   pub fn new(wr: @std::io::Writer) -> Encoder { 
-    println!("in encoder::new");
+    //println!("in encoder::new");
     Encoder { wr: wr } 
   }
 
@@ -448,14 +448,16 @@ impl Decoder {
     str::from_utf8(self.rd.read_bytes(len))
   }
 
-  #[inline(always)]
+  //[inline(always)]
   fn _read_vec_len(&mut self) -> uint {
+      //printfln!("in _read_vec_len on self: %?", self);
     let c = self._read_byte();
+      //printfln!("in _read_vec_len on byte c= %?", c);
+
     match c {
       0x90 .. 0x9f => c as uint & 0x0F,
       0xdc         => self.rd.read_be_u16() as uint,
       0xdd         => self.rd.read_be_u32() as uint,
-      0x85         => fail!("what do I do with 0x85 now?"),
 	_            => fail!("unimplmeneted _read_vec_len() byte code: %?", c)
     }
   }
@@ -565,10 +567,10 @@ impl serialize::Decoder for Decoder {
 	  let b : uint = self.rd.read_be_u16() as uint;
 	  self._read_str(b)
 	},
-	  0xdb         => {
-	    let b : uint = self.rd.read_be_u32() as uint;
-	    self._read_str(b)
-	  },
+	0xdb         => {
+	  let b : uint = self.rd.read_be_u32() as uint;
+	  self._read_str(b)
+	},
         _            => fail!()
       }
     }
@@ -579,8 +581,9 @@ impl serialize::Decoder for Decoder {
 
     #[inline(always)]
     fn read_seq<T>(&mut self, f: &fn(&mut Decoder,uint) -> T) -> T {
-      println!("in read_seq.");
+      //println!("in read_seq.");
       let len = self._read_vec_len();
+      //printfln!("I see length of %?", len);
       f(self, len)
     }
     
@@ -589,7 +592,8 @@ impl serialize::Decoder for Decoder {
 
     #[inline(always)]
     fn read_struct<T>(&mut self, _name: &str, len: uint, f: &fn(&mut Decoder) -> T) -> T {
-      if len != self._read_vec_len() { fail!() }
+        //printfln!("in read_struct");
+      if len != self._read_map_len() { fail!() }
       f(self)
     }
 
@@ -686,7 +690,7 @@ impl Decoder {
 
   fn parse(&mut self) -> Value {
     let c = self.rd.read_byte();
-    printfln!("in parse: read value %x",c as uint);
+    //printfln!("in parse: read value %x",c as uint);
     if (c < 0) {
       fail!()
     }

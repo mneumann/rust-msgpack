@@ -29,7 +29,7 @@ pub fn decod(bytes: &[u8]) {
 }
 
 fn main() {
-   debug!("main started");
+  //debug!("main started");
   {
     let res = std::io::buffered_file_writer(&Path("test.msgpack"));
     if res.is_ok() {
