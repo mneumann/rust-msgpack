@@ -788,7 +788,7 @@ mod tests {
     #[test]
     fn test_circular_option() {
         let mut v = Some(1);
-        let mut w : Option<int> = from_msgpack(to_msgpack(&v));
+        let w : Option<int> = from_msgpack(to_msgpack(&v));
 
         assert_eq!(w, v);
 
