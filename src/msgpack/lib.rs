@@ -1,5 +1,7 @@
+#[crate_id = "msgpack#0.1-pre"]
 #[desc = "msgpack.org implementation for Rust"]
-#[license = "MIT"]
+#[license = "MIT/ASL2"]
+#[crate_type = "lib"]
 
 extern mod extra;
 
@@ -12,7 +14,6 @@ mod utils;
 mod encoder;
 mod decoder;
 mod parser;
-#[cfg(test)] mod tests;
 
 pub fn to_msgpack<'a, T: Encodable<Encoder<'a>>>(t: &T) -> ~[u8] {
   with_mem_writer(|wr: &mut MemWriter| {
