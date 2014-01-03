@@ -1,5 +1,6 @@
-rust-msgpack
-============
+# rust-msgpack
+
+[![Build Status](https://travis-ci.org/mneumann/rust-msgpack.png?branch=master)](https://travis-ci.org/mneumann/rust-msgpack)
 
 msgpack.org implementation for Rust language.
 
