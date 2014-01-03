@@ -1,6 +1,6 @@
 use std::io::mem::{MemReader,MemWriter,with_mem_writer};
-use encoder::Encoder;
-use decoder::Decoder;
+use msgpack::encoder::Encoder;
+use msgpack::decoder::Decoder;
 use extra::serialize::{Encodable,Decodable};
 
 mod utils;

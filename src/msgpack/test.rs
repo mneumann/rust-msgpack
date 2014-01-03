@@ -1,5 +1,9 @@
-use lib::{from_msgpack, to_msgpack};
+extern mod extra;
+
+use msgpack::{from_msgpack, to_msgpack};
 use std::hashmap::HashMap;
+
+mod msgpack;
 
 #[test]
 fn test_circular_str() {
