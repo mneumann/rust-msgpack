@@ -1,7 +1,5 @@
 #[desc = "msgpack.org implementation for Rust"]
 #[license = "MIT"]
-#[crate_id = "github.com/mneumann/rust-msgpack#0.1"]
-#[crate_type = "lib"];
 
 extern mod extra;
 
