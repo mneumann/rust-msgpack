@@ -1,5 +1,5 @@
 before_install:
-  - yes | sudo apt-get-repository ppa:hansjorg/rust
+  - yes | sudo add-apt-repository ppa:hansjorg/rust
   - sudo apt-get update
 install:
   - sudo apt-get install rust-nightly
