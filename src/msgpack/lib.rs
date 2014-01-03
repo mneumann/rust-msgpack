@@ -1,4 +1,4 @@
-#[crate_id = "msgpack#0.1-pre"]
+#[crate_id = "msgpack"]
 #[desc = "msgpack.org implementation for Rust"]
 #[license = "MIT/ASL2"]
 #[crate_type = "lib"]
