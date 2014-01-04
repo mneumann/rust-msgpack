@@ -37,40 +37,24 @@ impl<'a> Encoder<'a> {
     }
   }
 
-  #[inline(always)]
-  fn _emit_i8(&mut self, v: i8) {
-    if (v as u8) & 0xe0 != 0xe0 {
-      self.wr.write_u8(0xd0);
+  /// Emits the most efficient representation of the given signed integer
+  fn _emit_signed(&mut self, v: i64) {
+    if v >= -(1i64<<7) && v < (1i64<<7) {
+      let v = v as i8;
+      if (v as u8) & 0xe0 != 0xe0 {
+        self.wr.write_u8(0xd0);
+      }
+      self.wr.write_u8(v as u8);
     }
-    self.wr.write_u8(v as u8);
-  }
-
-  #[inline(always)]
-  fn _emit_i16(&mut self, v: i16) {
-    if utils::can_cast_i16_to_i8(v) {
-      self._emit_i8(v as i8);
-    }
-    else {
+    else if v >= -(1i64<<15) && v < (1i64<<15) {
+      let v = v as i16;
       self.wr.write_u8(0xd1);
       self.wr.write_be_i16(v);
     }
-  }
-
-  #[inline(always)]
-  fn _emit_i32(&mut self, v: i32) {
-    if utils::can_cast_i32_to_i16(v) {
-      self._emit_i16(v as i16);
-    }
-    else {
+    else if v >= -(1i64<<31) && v < (1i64<<31) {
+      let v = v as i32;
       self.wr.write_u8(0xd2);
       self.wr.write_be_i32(v);
-    }
-  }
-
-  #[inline(always)]
-  fn _emit_i64(&mut self, v: i64) {
-    if utils::can_cast_i64_to_i32(v) {
-      self._emit_i32(v as i32);
     }
     else {
       self.wr.write_u8(0xd3);
@@ -116,24 +100,25 @@ impl<'a> serialize::Encoder for Encoder<'a> {
 
   #[inline(always)]
   fn emit_uint(&mut self, v: uint) { self._emit_unsigned(v as u64); }
-
   #[inline(always)]
   fn emit_u64(&mut self, v: u64)   { self._emit_unsigned(v as u64); }
-
   #[inline(always)]
   fn emit_u32(&mut self, v: u32)   { self._emit_unsigned(v as u64); }
-
   #[inline(always)]
   fn emit_u16(&mut self, v: u16)   { self._emit_unsigned(v as u64); }
-
   #[inline(always)]
   fn emit_u8(&mut self, v: u8)     { self._emit_unsigned(v as u64); }
 
-  fn emit_int(&mut self, v: int) { self._emit_i64(v as i64); }
-  fn emit_i64(&mut self, v: i64) { self._emit_i64(v); }
-  fn emit_i32(&mut self, v: i32) { self._emit_i32(v); }
-  fn emit_i16(&mut self, v: i16) { self._emit_i16(v); }
-  fn emit_i8(&mut self, v: i8)   { self._emit_i8(v); }
+  #[inline(always)]
+  fn emit_int(&mut self, v: int) { self._emit_signed(v as i64); }
+  #[inline(always)]
+  fn emit_i64(&mut self, v: i64) { self._emit_signed(v as i64); }
+  #[inline(always)]
+  fn emit_i32(&mut self, v: i32) { self._emit_signed(v as i64); }
+  #[inline(always)]
+  fn emit_i16(&mut self, v: i16) { self._emit_signed(v as i64); }
+  #[inline(always)]
+  fn emit_i8(&mut self,  v: i8)  { self._emit_signed(v as i64); }
 
   fn emit_f64(&mut self, v: f64) {
     self.wr.write_u8(0xcb);
