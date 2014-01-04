@@ -109,41 +109,26 @@ impl<'a> serialize::Decoder for Decoder<'a> {
     }
 
     #[inline(always)]
-    fn read_uint(&mut self) -> uint {
-      let v = self._read_unsigned();
-      if !utils::can_cast_u64_to_uint(v) { fail!() }
-      v as uint
-    }
-
-    #[inline(always)]
     fn read_u64(&mut self) -> u64 { self._read_unsigned() }
 
     #[inline(always)]
+    fn read_uint(&mut self) -> uint {
+      self._read_unsigned().to_uint().unwrap()
+    }
+
+    #[inline(always)]
     fn read_u32(&mut self) -> u32 {
-      let v = self._read_unsigned();
-      if !utils::can_cast_u64_to_u32(v) { fail!() }
-      v as u32
+      self._read_unsigned().to_u32().unwrap()
     }
 
     #[inline(always)]
     fn read_u16(&mut self) -> u16 {
-      let v = self._read_unsigned();
-      if !utils::can_cast_u64_to_u16(v) { fail!() }
-      v as u16
+      self._read_unsigned().to_u16().unwrap()
     }
 
     #[inline(always)]
     fn read_u8(&mut self) -> u8 {
-      let v = self._read_unsigned();
-      if !utils::can_cast_u64_to_u8(v) { fail!() }
-      v as u8
-    }
-
-    #[inline(always)]
-    fn read_int(&mut self) -> int {
-      let v = self._read_signed();
-      if !utils::can_cast_i64_to_int(v) { fail!() }
-      v as int
+      self._read_unsigned().to_u8().unwrap()
     }
 
     #[inline(always)]
@@ -152,24 +137,23 @@ impl<'a> serialize::Decoder for Decoder<'a> {
     }
 
     #[inline(always)]
+    fn read_int(&mut self) -> int {
+      self._read_signed().to_int().unwrap()
+    }
+
+    #[inline(always)]
     fn read_i32(&mut self) -> i32 {
-      let v = self._read_signed();
-      if !utils::can_cast_i64_to_i32(v) { fail!() }
-      v as i32
+      self._read_signed().to_i32().unwrap()
     }
 
     #[inline(always)]
     fn read_i16(&mut self) -> i16 {
-      let v = self._read_signed();
-      if !utils::can_cast_i64_to_i16(v) { fail!() }
-      v as i16
+      self._read_signed().to_i16().unwrap()
     }
 
     #[inline(always)]
     fn read_i8(&mut self) -> i8 {
-      let v = self._read_signed();
-      if !utils::can_cast_i64_to_i8(v) { fail!() }
-      v as i8
+      self._read_signed().to_i8().unwrap()
     }
 
     #[inline(always)]
