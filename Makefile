@@ -3,7 +3,7 @@ build:
 	rustpkg build examples/simple
 	rustpkg build examples/value
 
-test:
+test: build
 	rustpkg test msgpack
 
 install:
