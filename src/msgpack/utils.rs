@@ -48,21 +48,6 @@ pub fn can_cast_u64_to_u32(v : u64) -> bool {
   (v & 0xFFFFFFFF00000000 == 0)
 }
 
-#[inline(always)]
-pub fn can_cast_u32_to_u8(v : u32) -> bool {
-  (v & 0xFFFFFF00 == 0)
-}
-
-#[inline(always)]
-pub fn can_cast_u32_to_u16(v : u32) -> bool {
-  (v & 0xFFFF0000 == 0)
-}
-
-#[inline(always)]
-pub fn can_cast_u16_to_u8(v : u16) -> bool {
-  (v & 0xFF00 == 0)
-}
-
 // XXX
 #[inline(always)]
 pub fn can_cast_u64_to_uint(v : u64) -> bool {
@@ -80,10 +65,3 @@ pub fn conv_float(v: u32) -> f32 { unsafe { cast::transmute(v) } }
 
 #[inline(always)]
 pub fn conv_double(v: u64) -> f64 { unsafe { cast::transmute(v) } }
-
-/// Return true if the most significat bit of the u8 value is 0,
-/// i.e. the value could fit into 7 bits.
-#[inline(always)]
-pub fn is_u7(v : u8) -> bool {
-  (v & 0x80) == 0  
-}
