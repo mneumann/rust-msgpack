@@ -1,7 +1,14 @@
 use std::cast;
+use std::io::Reader;
 
 #[inline(always)]
-pub fn conv_float(v: u32) -> f32 { unsafe { cast::transmute(v) } }
+pub fn read_float(rd: &mut Reader) -> f32 {
+  let v = rd.read_be_u32();
+  unsafe { cast::transmute(v) }
+}
 
 #[inline(always)]
-pub fn conv_double(v: u64) -> f64 { unsafe { cast::transmute(v) } }
+pub fn read_double(rd: &mut Reader) -> f64 {
+  let v = rd.read_be_u64();
+  unsafe { cast::transmute(v) }
+}

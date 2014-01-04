@@ -168,7 +168,7 @@ impl<'a> serialize::Decoder for Decoder<'a> {
     #[inline(always)]
     fn read_f64(&mut self) -> f64 {
       match self._read_byte() {
-        0xcb => utils::conv_double(self.rd.read_be_u64()),
+        0xcb => utils::read_double(self.rd),
         _    => fail!()
       }
     }
@@ -176,7 +176,7 @@ impl<'a> serialize::Decoder for Decoder<'a> {
     #[inline(always)]
     fn read_f32(&mut self) -> f32 {
       match self._read_byte() {
-        0xca => utils::conv_float(self.rd.read_be_u32()),
+        0xca => utils::read_float(self.rd),
         _    => fail!()
       }
     }

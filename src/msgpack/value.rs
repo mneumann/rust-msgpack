@@ -69,8 +69,8 @@ impl<'a> Decoder<'a> {
       0xd3         => Integer(self.rd.read_be_i64()),
       0xe0 .. 0xff => Integer((c as i8) as i64),
 
-      0xca         => Float(utils::conv_float(self.rd.read_be_u32())),
-      0xcb         => Double(utils::conv_double(self.rd.read_be_u64())),
+      0xca         => Float(utils::read_float(self.rd)),
+      0xcb         => Double(utils::read_double(self.rd)),
 
       0xa0 .. 0xbf => String(self._read_raw((c as uint) & 0x1F)),
       0xd9         => { let b = self.rd.read_u8() as uint; String(self._read_raw(b)) },
