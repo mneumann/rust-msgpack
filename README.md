@@ -23,9 +23,9 @@ fn main() {
 }
 ```
 
-To enable your own data structures to be serialized from and to msgpack, simply
-use a <code>#[deriving(Encodable,Decodable)]</code> annotation as shown in the
-following example:
+To enable your own data structures to be automatically serialized from and to
+msgpack, derive from +Encodable+ and +Decodable+ as shown in the following
+example:
 
 ```rust
 #[deriving(Encodable,Decodable)]
