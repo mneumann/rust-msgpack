@@ -2,10 +2,9 @@
 #[comment = "msgpack.org implementation for Rust"];
 #[license = "MIT/ASL2"];
 #[crate_type = "lib"];
-#[feature(globs)];
 
 extern mod extra;
 
-pub use msgpack::*;
+pub use msgpack::{encoder,decoder,value,to_msgpack,from_msgpack};
 
 pub mod msgpack;

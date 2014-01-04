@@ -17,37 +17,37 @@ pub enum Value {
 }
 
 /// A structure to decode Msgpack from a reader into a Value.
-pub struct Parser<'a> {
+pub struct Decoder<'a> {
   priv rd: &'a mut io::Reader,
 }
 
-impl<'a> Parser<'a> {
+impl<'a> Decoder<'a> {
 
-  /// Creates a new Msgpack parser from the specified reader.
-  pub fn new(rd: &'a mut io::Reader) -> Parser<'a> {
-    Parser { rd: rd }
+  /// Creates a new Msgpack decoder from the specified reader.
+  pub fn new(rd: &'a mut io::Reader) -> Decoder<'a> {
+    Decoder { rd: rd }
   }
 
-  fn parse_array(&mut self, len: uint) -> Value {
-    Array(vec::from_fn(len, |_| { self.parse() }))
+  fn decode_array(&mut self, len: uint) -> Value {
+    Array(vec::from_fn(len, |_| { self.decode() }))
   }
 
-  fn parse_map(&mut self, len: uint) -> Value {
-    Map(vec::from_fn(len, |_| { (self.parse(), self.parse()) }))
+  fn decode_map(&mut self, len: uint) -> Value {
+    Map(vec::from_fn(len, |_| { (self.decode(), self.decode()) }))
   }
 
-  fn _read_raw(&mut self, len: uint) -> ~[u8] {
-    self.rd.read_bytes(len)
-  }
-
-  fn parse_ext(&mut self, len: uint) -> Value {
+  fn decode_ext(&mut self, len: uint) -> Value {
     let typ = self.rd.read_i8();
     if typ < 0 { fail!("Reserved type") }
     let data = self.rd.read_bytes(len);
     Extended(typ, data)
   }
 
-  pub fn parse(&mut self) -> Value {
+  fn _read_raw(&mut self, len: uint) -> ~[u8] {
+    self.rd.read_bytes(len)
+  }
+
+  pub fn decode(&mut self) -> Value {
     let c: u8 = self.rd.read_byte().unwrap();
     match c {
       0xc0         => Nil,
@@ -81,25 +81,32 @@ impl<'a> Parser<'a> {
       0xc5         => { let b = self.rd.read_be_u16() as uint; Binary(self._read_raw(b)) },
       0xc6         => { let b = self.rd.read_be_u32() as uint; Binary(self._read_raw(b)) },
 
-      0x90 .. 0x9f => self.parse_array((c as uint) & 0x0F),
-      0xdc         => { let b = self.rd.read_be_u16() as uint; self.parse_array(b) },
-      0xdd         => { let b = self.rd.read_be_u32() as uint; self.parse_array(b) },
+      0x90 .. 0x9f => self.decode_array((c as uint) & 0x0F),
+      0xdc         => { let b = self.rd.read_be_u16() as uint; self.decode_array(b) },
+      0xdd         => { let b = self.rd.read_be_u32() as uint; self.decode_array(b) },
      
-      0x80 .. 0x8f => self.parse_map((c as uint) & 0x0F),
-      0xde         => { let b = self.rd.read_be_u16() as uint; self.parse_map(b) },
-      0xdf         => { let b = self.rd.read_be_u32() as uint; self.parse_map(b) },
+      0x80 .. 0x8f => self.decode_map((c as uint) & 0x0F),
+      0xde         => { let b = self.rd.read_be_u16() as uint; self.decode_map(b) },
+      0xdf         => { let b = self.rd.read_be_u32() as uint; self.decode_map(b) },
 
-      0xd4         => self.parse_ext(1),
-      0xd5         => self.parse_ext(2),
-      0xd6         => self.parse_ext(4),
-      0xd7         => self.parse_ext(8),
-      0xd8         => self.parse_ext(16),
-      0xc7         => { let b = self.rd.read_u8() as uint; self.parse_ext(b) },
-      0xc8         => { let b = self.rd.read_be_u16() as uint; self.parse_ext(b) },
-      0xc9         => { let b = self.rd.read_be_u32() as uint; self.parse_ext(b) },
+      0xd4         => self.decode_ext(1),
+      0xd5         => self.decode_ext(2),
+      0xd6         => self.decode_ext(4),
+      0xd7         => self.decode_ext(8),
+      0xd8         => self.decode_ext(16),
+      0xc7         => { let b = self.rd.read_u8() as uint; self.decode_ext(b) },
+      0xc8         => { let b = self.rd.read_be_u16() as uint; self.decode_ext(b) },
+      0xc9         => { let b = self.rd.read_be_u32() as uint; self.decode_ext(b) },
 
       // XXX: This is only here to satify Rust's pattern checker.
       _            => fail!("Fatal")
     }
   }
+}
+
+pub fn from_msgpack(bytes: ~[u8]) -> Value {
+  use std::io::mem::{MemReader};
+  let mut rd = MemReader::new(bytes);
+  let mut decoder = Decoder::new(&mut rd);
+  decoder.decode()
 }
