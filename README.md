@@ -24,8 +24,8 @@ fn main() {
 ```
 
 To enable your own data structures to be automatically serialized from and to
-msgpack, derive from +Encodable+ and +Decodable+ as shown in the following
-example:
+msgpack, derive from <code>Encodable</code> and <code>Decodable</code> as shown
+in the following example:
 
 ```rust
 #[deriving(Encodable,Decodable)]
