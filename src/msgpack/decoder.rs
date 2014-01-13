@@ -184,7 +184,7 @@ impl<'a> serialize::Decoder for Decoder<'a> {
     #[inline(always)]
     fn read_char(&mut self) -> char {
       let s = self.read_str();
-      if s.len() == 0 { fail!(~"no character") }
+      if s.len() != 1 { fail!(~"no character") }
       s[0] as char
     }
 
