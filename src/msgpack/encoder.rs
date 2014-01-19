@@ -147,15 +147,15 @@ impl<'a> serialize::Encoder for Encoder<'a> {
   }
 
   fn emit_enum(&mut self, _name: &str, _f: |&mut Encoder<'a>|) {
-    fail!(~"Enum not supported");
+    fail!("Enum not supported");
   }
 
   fn emit_enum_variant(&mut self, _name: &str, _id: uint, _cnt: uint, _f: |&mut Encoder<'a>|) {
-    fail!(~"Enum not supported");
+    fail!("Enum not supported");
   }
 
   fn emit_enum_variant_arg(&mut self, _idx: uint, _f: |&mut Encoder<'a>|) {
-    fail!(~"Enum not supported");
+    fail!("Enum not supported");
   }
 
   fn emit_enum_struct_variant(&mut self, name: &str, id: uint, cnt: uint, f: |&mut Encoder<'a>|) {
