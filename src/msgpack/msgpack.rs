@@ -1,4 +1,4 @@
-use std::io::mem::{MemReader,MemWriter,with_mem_writer};
+use std::io::{MemReader,MemWriter};
 use msgpack::encoder::Encoder;
 use msgpack::decoder::Decoder;
 use extra::serialize::{Encodable,Decodable};
@@ -9,10 +9,10 @@ pub mod decoder;
 pub mod value;
 
 pub fn to_msgpack<'a, T: Encodable<Encoder<'a>>>(t: &T) -> ~[u8] {
-  with_mem_writer(|wr: &mut MemWriter| {
-    let mut encoder = Encoder::new(wr);
-    t.encode(&mut encoder);
-  })
+  let mut wr = MemWriter::new();
+  let mut encoder = Encoder::new(&mut wr);
+  t.encode(&mut encoder);
+  wr.unwrap()
 }
 
 pub fn from_msgpack<'a, T: Decodable<Decoder<'a>>>(bytes: ~[u8]) -> T {

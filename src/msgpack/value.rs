@@ -105,7 +105,7 @@ impl<'a> Decoder<'a> {
 }
 
 pub fn from_msgpack(bytes: ~[u8]) -> Value {
-  use std::io::mem::{MemReader};
+  use std::io::MemReader;
   let mut rd = MemReader::new(bytes);
   let mut decoder = Decoder::new(&mut rd);
   decoder.decode()
