@@ -62,35 +62,49 @@ impl<'a> Encoder<'a> {
   }
 
   #[inline(always)]
-  fn _emit_len(&mut self, len: uint, sz1: uint, op1: u8, op2: u8, op3: u8) {
-    if len <= sz1 {
-      self.wr.write_u8(op1 | (len as u8));
-    } else if len <= 0xFFFF {
+  fn _emit_len(&mut self, len: uint, (op1, sz1): (u8, uint), (op2, sz2): (u8, uint), op3: u8, op4: u8) {
+    if len < sz1 {
+      self.wr.write_u8(op1);
+    } else if len < sz2 {
       self.wr.write_u8(op2);
+      self.wr.write_u8(len as u8);
+    } else if len <= 0xFFFF {
+      self.wr.write_u8(op3);
       self.wr.write_be_u16(len as u16);
     } else {
       assert!(len <= 0xFFFF_FFFF);
-      self.wr.write_u8(op3);
+      self.wr.write_u8(op4);
       self.wr.write_be_u32(len as u32);
     }
   }
 
-  fn _emit_raw_len(&mut self, len: uint) {
-    self._emit_len(len, 31, 0xa0, 0xda, 0xdb)
+  fn _emit_str_len(&mut self, len: uint) {
+    self._emit_len(len, (0xa0_u8 | (len & 31) as u8, 32),
+                        (0xd9, 256),
+                         0xda,
+                         0xdb)
   }
 
-  fn _emit_vec_len(&mut self, len: uint) {
-    self._emit_len(len, 15, 0x90, 0xdc, 0xdd)
+  fn _emit_bin_len(&mut self, len: uint) {
+    self._emit_len(len, (0x00, 0),
+                        (0xc4, 256),
+                         0xc5,
+                         0xc6)
   }
 
-  fn _emit_map_len(&mut self, len: uint) {
-    self._emit_len(len, 15, 0x80, 0xde, 0xdf)
+
+  pub fn _emit_array_len(&mut self, len: uint) {
+    self._emit_len(len, (0x90_u8 | (len & 15) as u8, 16),
+                        (0x00, 0),
+                         0xdc,
+                         0xdd)
   }
 
-  #[inline(always)]
-  fn _emit_raw(&mut self, v: &[u8]) {
-    self._emit_raw_len(v.len());
-    self.wr.write(v);
+  pub fn _emit_map_len(&mut self, len: uint) {
+    self._emit_len(len, (0x80_u8 | (len & 15) as u8, 16),
+                        (0x00, 0),
+                         0xde,
+                         0xdf)
   }
 }
 
@@ -142,7 +156,8 @@ impl<'a> serialize::Encoder for Encoder<'a> {
   }
 
   fn emit_str(&mut self, v: &str) {
-    self._emit_raw(v.as_bytes());
+    self._emit_str_len(v.len());
+    self.wr.write(v.as_bytes());
   }
 
   fn emit_enum(&mut self, _name: &str, _f: |&mut Encoder<'a>|) {
@@ -201,7 +216,7 @@ impl<'a> serialize::Encoder for Encoder<'a> {
   fn emit_option_some(&mut self, f: |&mut Encoder<'a>|) { f(self); }
 
   fn emit_seq(&mut self, len: uint, f: |&mut Encoder<'a>|) {
-    self._emit_vec_len(len);
+    self._emit_array_len(len);
     f(self);
   }
 
