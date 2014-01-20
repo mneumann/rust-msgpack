@@ -1,6 +1,5 @@
 use std::{io, cast, str};
 use extra::serialize;
-use super::utils;
 
 /// A structure for implementing serialization to Msgpack.
 pub struct Encoder<'a> {
