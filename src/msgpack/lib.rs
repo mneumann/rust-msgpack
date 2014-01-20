@@ -2,6 +2,7 @@
 #[comment = "msgpack.org implementation for Rust"];
 #[license = "MIT/ASL2"];
 #[crate_type = "lib"];
+#[feature(struct_variant)];
 
 extern mod extra;
 
@@ -11,6 +12,8 @@ use std::io::{MemReader,MemWriter};
 
 use extra::serialize;
 use extra::serialize::{Encodable,Decodable};
+
+mod rpc;
 
 pub enum Value {
   Nil,
