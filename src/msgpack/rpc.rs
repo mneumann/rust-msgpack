@@ -12,24 +12,13 @@ impl<'a> serialize::Encodable<Encoder<'a>> for RpcMessage {
   fn encode(&self, s: &mut Encoder<'a>) {
     match *self {
       RpcRequest {msgid, ref method, ref params} => {
-        s._emit_array_len(4);
-        (0u).encode(s);
-        msgid.encode(s);
-        method.encode(s);
-        params.encode(s);
+        (0u, msgid, method, params).encode(s); 
       }
       RpcResponse {msgid, ref error, ref result} => {
-        s._emit_array_len(4);
-        (1u).encode(s);
-        msgid.encode(s);
-        error.encode(s);
-        result.encode(s);
+        (1u, msgid, error, result).encode(s); 
       }
       RpcNotification {ref method, ref params} => {
-        s._emit_array_len(3);
-        (2u).encode(s);
-        method.encode(s);
-        params.encode(s);
+        (2u, method, params).encode(s);
       }
     }
   }
