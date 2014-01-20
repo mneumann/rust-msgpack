@@ -128,7 +128,7 @@ impl<'a> Decoder<'a> {
     Extended(typ, data)
   }
 
-  pub fn decode_value(&mut self) -> Value {
+  fn decode_value(&mut self) -> Value {
     let c: u8 = self._read_byte();
     match c {
       0xc0         => Nil,

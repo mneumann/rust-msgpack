@@ -95,14 +95,14 @@ impl<'a> Encoder<'a> {
   }
 
 
-  pub fn _emit_array_len(&mut self, len: uint) {
+  fn _emit_array_len(&mut self, len: uint) {
     self._emit_len(len, (0x90_u8 | (len & 15) as u8, 16),
                         (0x00, 0),
                          0xdc,
                          0xdd)
   }
 
-  pub fn _emit_map_len(&mut self, len: uint) {
+  fn _emit_map_len(&mut self, len: uint) {
     self._emit_len(len, (0x80_u8 | (len & 15) as u8, 16),
                         (0x00, 0),
                          0xde,
