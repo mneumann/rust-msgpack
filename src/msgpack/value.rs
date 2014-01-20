@@ -52,7 +52,7 @@ impl<'a> Decoder<'a> {
     match c {
       0xc0         => Nil,
 
-      0xc1         => fail!(~"Reserved"),
+      0xc1         => fail!("Reserved"),
 
       0xc2         => Boolean(false),
       0xc3         => Boolean(true),

@@ -56,7 +56,7 @@ impl<'a> Decoder<'a> {
       0xcd         => self.rd.read_be_u16() as u64,
       0xce         => self.rd.read_be_u32() as u64,
       0xcf         => self.rd.read_be_u64(),
-      _            => fail!(~"No unsigned integer")
+      _            => fail!("No unsigned integer")
     }
   }
 
@@ -68,7 +68,7 @@ impl<'a> Decoder<'a> {
       0xd2         => self.rd.read_be_i32() as i64,
       0xd3         => self.rd.read_be_i64(),
       0xe0 .. 0xff => (c as i8) as i64,
-      _            => fail!(~"No signed integer")
+      _            => fail!("No signed integer")
     }
   }
 
@@ -184,7 +184,7 @@ impl<'a> serialize::Decoder for Decoder<'a> {
     #[inline(always)]
     fn read_char(&mut self) -> char {
       let s = self.read_str();
-      if s.len() != 1 { fail!(~"no character") }
+      if s.len() != 1 { fail!("no character") }
       s[0] as char
     }
 
