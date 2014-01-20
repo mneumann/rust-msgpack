@@ -3,7 +3,6 @@ use msgpack::encoder::Encoder;
 use msgpack::decoder::Decoder;
 use extra::serialize::{Encodable,Decodable};
 
-mod utils;
 pub mod encoder;
 pub mod decoder;
 pub mod value;

@@ -1,7 +1,18 @@
-use std::{io, str, vec};
+use std::{io, str, vec, cast};
 use extra::serialize;
-use super::utils;
 use super::value::{Value,Nil,Boolean,Integer,Unsigned,Float,Double,Array,Map,String,Binary,Extended};
+
+#[inline(always)]
+fn read_float(rd: &mut io::Reader) -> f32 {
+  let v = rd.read_be_u32();
+  unsafe { cast::transmute(v) }
+}
+
+#[inline(always)]
+fn read_double(rd: &mut io::Reader) -> f64 {
+  let v = rd.read_be_u64();
+  unsafe { cast::transmute(v) }
+}
 
 /// A structure to decode Msgpack from a reader.
 pub struct Decoder<'a> {
@@ -139,8 +150,8 @@ impl<'a> Decoder<'a> {
       0xd3         => Integer(self.rd.read_be_i64()),
       0xe0 .. 0xff => Integer((c as i8) as i64),
 
-      0xca         => Float(utils::read_float(self.rd)),
-      0xcb         => Double(utils::read_double(self.rd)),
+      0xca         => Float(read_float(self.rd)),
+      0xcb         => Double(read_double(self.rd)),
 
       0xa0 .. 0xbf => String(self._read_raw((c as uint) & 0x1F)),
       0xd9         => { let b = self.rd.read_u8() as uint; String(self._read_raw(b)) },
@@ -242,7 +253,7 @@ impl<'a> serialize::Decoder for Decoder<'a> {
     #[inline(always)]
     fn read_f64(&mut self) -> f64 {
       match self._read_byte() {
-        0xcb => utils::read_double(self.rd),
+        0xcb => read_double(self.rd),
         _    => fail!()
       }
     }
@@ -250,7 +261,7 @@ impl<'a> serialize::Decoder for Decoder<'a> {
     #[inline(always)]
     fn read_f32(&mut self) -> f32 {
       match self._read_byte() {
-        0xca => utils::read_float(self.rd),
+        0xca => read_float(self.rd),
         _    => fail!()
       }
     }
