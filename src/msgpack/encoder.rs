@@ -1,5 +1,7 @@
 use std::{io, cast, str};
 use extra::serialize;
+use super::value::{Value,Nil,Boolean,Integer,Unsigned,Float,Double,Array,Map,String,Binary,Extended};
+use std::str::from_utf8;
 
 /// A structure for implementing serialization to Msgpack.
 pub struct Encoder<'a> {
@@ -235,5 +237,32 @@ impl<'a> serialize::Encoder for Encoder<'a> {
 
   fn emit_map_elt_val(&mut self, _idx: uint, f: |&mut Encoder<'a>|) {
     f(self);
+  }
+}
+
+impl<'a> serialize::Encodable<Encoder<'a>> for Value {
+  fn encode(&self, s: &mut Encoder<'a>) {
+    match *self {
+      Nil => (s as &mut serialize::Encoder).emit_nil(),
+      Boolean(b) => (s as &mut serialize::Encoder).emit_bool(b),
+      Integer(i) => (s as &mut serialize::Encoder).emit_i64(i),
+      Unsigned(u) => (s as &mut serialize::Encoder).emit_u64(u),
+      Float(f) => (s as &mut serialize::Encoder).emit_f32(f),
+      Double(d) => (s as &mut serialize::Encoder).emit_f64(d),
+      Array(ref ary) => {
+        s._emit_array_len(ary.len());
+        for elt in ary.iter() { elt.encode(s); }
+      }
+      Map(ref map) => {
+        s._emit_map_len(map.len());
+        for &(ref key, ref val) in map.iter() {
+          key.encode(s);
+          val.encode(s);
+        }
+      }
+      String(ref str) => (s as &mut serialize::Encoder).emit_str(from_utf8(str.as_slice())),
+      Binary(_) => fail!(),
+      Extended(_, _) => fail!()
+    }
   }
 }

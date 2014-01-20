@@ -5,27 +5,27 @@ use super::utils;
 pub enum Value {
   Nil,
   Boolean(bool),
-  Array(~[Value]),
-  Map(~[(Value, Value)]),
   Integer(i64),
   Unsigned(u64),
   Float(f32),
   Double(f64),
+  Array(~[Value]),
+  Map(~[(Value, Value)]),
   String(~[u8]),
   Binary(~[u8]),
   Extended(i8, ~[u8])
 }
 
 /// A structure to decode Msgpack from a reader into a Value.
-pub struct Decoder<'a> {
+pub struct ValueDecoder<'a> {
   priv rd: &'a mut io::Reader,
 }
 
-impl<'a> Decoder<'a> {
+impl<'a> ValueDecoder<'a> {
 
   /// Creates a new Msgpack decoder from the specified reader.
-  pub fn new(rd: &'a mut io::Reader) -> Decoder<'a> {
-    Decoder { rd: rd }
+  pub fn new(rd: &'a mut io::Reader) -> ValueDecoder<'a> {
+    ValueDecoder { rd: rd }
   }
 
   fn decode_array(&mut self, len: uint) -> Value {
@@ -107,6 +107,6 @@ impl<'a> Decoder<'a> {
 pub fn from_msgpack(bytes: ~[u8]) -> Value {
   use std::io::MemReader;
   let mut rd = MemReader::new(bytes);
-  let mut decoder = Decoder::new(&mut rd);
+  let mut decoder = ValueDecoder::new(&mut rd);
   decoder.decode()
 }
