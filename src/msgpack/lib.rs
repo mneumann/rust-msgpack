@@ -116,7 +116,7 @@ impl<'a> Decoder<'a> {
   }
 
   fn _read_str(&mut self, len: uint) -> ~str {
-    str::from_utf8_owned(self.rd.read_bytes(len))
+    str::from_utf8_owned(self.rd.read_bytes(len)).unwrap()
   }
 
   fn _read_vec_len(&mut self) -> uint {
@@ -662,7 +662,7 @@ impl<'a> serialize::Encodable<Encoder<'a>> for Value {
           val.encode(s);
         }
       }
-      String(ref str) => (s as &mut serialize::Encoder).emit_str(from_utf8(str.as_slice())),
+      String(ref str) => (s as &mut serialize::Encoder).emit_str(from_utf8(str.as_slice()).unwrap()),
       Binary(_) => fail!(),
       Extended(_, _) => fail!()
     }
