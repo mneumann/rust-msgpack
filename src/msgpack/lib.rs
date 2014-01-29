@@ -4,7 +4,7 @@
 #[crate_type = "lib"];
 #[feature(struct_variant)];
 
-extern mod extra;
+extern mod extra = "extra#0.10-pre";
 
 use std::{io, str, vec, cast};
 use std::str::from_utf8;
