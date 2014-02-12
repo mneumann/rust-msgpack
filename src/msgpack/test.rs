@@ -1,9 +1,9 @@
 extern mod msgpack = "msgpack#0.1";
-extern mod extra = "extra#0.10-pre";
+extern mod serialize= "serialize#0.10-pre";
 
 use std::hashmap::HashMap;
 use msgpack::{from_msgpack,to_msgpack};
-use extra::serialize::Encodable;
+use serialize::Encodable;
 
 #[test]
 fn test_circular_str() {

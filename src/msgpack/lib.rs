@@ -4,14 +4,14 @@
 #[crate_type = "lib"];
 #[feature(struct_variant)];
 
-extern mod extra = "extra#0.10-pre";
+extern mod serialize = "serialize#0.10-pre";
 
 use std::{io, str, vec, cast};
 use std::str::from_utf8;
 use std::io::{MemReader,MemWriter};
 
-use extra::serialize;
-use extra::serialize::{Encodable,Decodable};
+// use serialize;
+use serialize::{Encodable,Decodable};
 
 mod rpc;
 
@@ -31,13 +31,13 @@ pub enum Value {
 
 #[inline(always)]
 fn read_float(rd: &mut io::Reader) -> f32 {
-  let v = rd.read_be_u32();
+  let v = rd.read_be_u32().unwrap();
   unsafe { cast::transmute(v) }
 }
 
 #[inline(always)]
 fn read_double(rd: &mut io::Reader) -> f64 {
-  let v = rd.read_be_u64();
+  let v = rd.read_be_u64().unwrap();
   unsafe { cast::transmute(v) }
 }
 
@@ -63,7 +63,7 @@ impl<'a> Decoder<'a> {
     match self.next_byte {
       Some(byte) => byte,
       None => {
-        self.next_byte = self.rd.read_byte();
+        self.next_byte = self.rd.read_byte().ok();
         match self.next_byte { 
           Some(byte) => byte,
           None => fail!("Unexpected EOF")
@@ -79,7 +79,7 @@ impl<'a> Decoder<'a> {
         byte
       }
       None => {
-        match self.rd.read_byte() { 
+        match self.rd.read_byte().ok() { 
           Some(byte) => byte,
           None => fail!("Unexpected EOF")
         }
@@ -91,10 +91,10 @@ impl<'a> Decoder<'a> {
     let c = self._read_byte();
     match c {
       0x00 .. 0x7f => c as u64,
-      0xcc         => self.rd.read_u8() as u64,
-      0xcd         => self.rd.read_be_u16() as u64,
-      0xce         => self.rd.read_be_u32() as u64,
-      0xcf         => self.rd.read_be_u64(),
+      0xcc         => self.rd.read_u8().unwrap() as u64,
+      0xcd         => self.rd.read_be_u16().unwrap() as u64,
+      0xce         => self.rd.read_be_u32().unwrap() as u64,
+      0xcf         => self.rd.read_be_u64().unwrap(),
       _            => fail!("No unsigned integer")
     }
   }
@@ -102,21 +102,21 @@ impl<'a> Decoder<'a> {
   fn _read_signed(&mut self) -> i64 {
     let c = self._read_byte();
     match c {
-      0xd0         => self.rd.read_i8() as i64,
-      0xd1         => self.rd.read_be_i16() as i64,
-      0xd2         => self.rd.read_be_i32() as i64,
-      0xd3         => self.rd.read_be_i64(),
+      0xd0         => self.rd.read_i8().unwrap() as i64,
+      0xd1         => self.rd.read_be_i16().unwrap() as i64,
+      0xd2         => self.rd.read_be_i32().unwrap() as i64,
+      0xd3         => self.rd.read_be_i64().unwrap(),
       0xe0 .. 0xff => (c as i8) as i64,
       _            => fail!("No signed integer")
     }
   }
 
   fn _read_raw(&mut self, len: uint) -> ~[u8] {
-    self.rd.read_bytes(len)
+    self.rd.read_bytes(len).unwrap()
   }
 
   fn _read_str(&mut self, len: uint) -> ~str {
-    str::from_utf8_owned(self.rd.read_bytes(len)).unwrap()
+    str::from_utf8_owned(self.rd.read_bytes(len).unwrap()).unwrap()
   }
 
   fn _read_vec_len(&mut self) -> uint {
@@ -124,8 +124,8 @@ impl<'a> Decoder<'a> {
 
     match c {
       0x90 .. 0x9f => (c as uint) & 0x0F,
-      0xdc         => self.rd.read_be_u16() as uint,
-      0xdd         => self.rd.read_be_u32() as uint,
+      0xdc         => self.rd.read_be_u16().unwrap() as uint,
+      0xdd         => self.rd.read_be_u32().unwrap() as uint,
       _            => fail!("Invalid byte code in _read_vec_len")
     }
   }
@@ -134,8 +134,8 @@ impl<'a> Decoder<'a> {
     let c = self._read_byte();
     match c {
       0x80 .. 0x8f => (c as uint) & 0x0F,
-      0xde         => self.rd.read_be_u16() as uint,
-      0xdf         => self.rd.read_be_u32() as uint,
+      0xde         => self.rd.read_be_u16().unwrap() as uint,
+      0xdf         => self.rd.read_be_u32().unwrap() as uint,
       _            => fail!("Invalid byte code in _read_map_len")
     }
   }
@@ -149,9 +149,9 @@ impl<'a> Decoder<'a> {
   }
 
   fn decode_ext(&mut self, len: uint) -> Value {
-    let typ = self.rd.read_i8();
+    let typ = self.rd.read_i8().unwrap();
     if typ < 0 { fail!("Reserved type") }
-    let data = self.rd.read_bytes(len);
+    let data = self.rd.read_bytes(len).unwrap();
     Extended(typ, data)
   }
 
@@ -166,45 +166,45 @@ impl<'a> Decoder<'a> {
       0xc3         => Boolean(true),
 
       0x00 .. 0x7f => Unsigned(c as u64),
-      0xcc         => Unsigned(self.rd.read_u8() as u64),
-      0xcd         => Unsigned(self.rd.read_be_u16() as u64),
-      0xce         => Unsigned(self.rd.read_be_u32() as u64),
-      0xcf         => Unsigned(self.rd.read_be_u64()),
+      0xcc         => Unsigned(self.rd.read_u8().unwrap() as u64),
+      0xcd         => Unsigned(self.rd.read_be_u16().unwrap() as u64),
+      0xce         => Unsigned(self.rd.read_be_u32().unwrap() as u64),
+      0xcf         => Unsigned(self.rd.read_be_u64().unwrap()),
 
-      0xd0         => Integer(self.rd.read_i8() as i64),
-      0xd1         => Integer(self.rd.read_be_i16() as i64),
-      0xd2         => Integer(self.rd.read_be_i32() as i64),
-      0xd3         => Integer(self.rd.read_be_i64()),
+      0xd0         => Integer(self.rd.read_i8().unwrap() as i64),
+      0xd1         => Integer(self.rd.read_be_i16().unwrap() as i64),
+      0xd2         => Integer(self.rd.read_be_i32().unwrap() as i64),
+      0xd3         => Integer(self.rd.read_be_i64().unwrap()),
       0xe0 .. 0xff => Integer((c as i8) as i64),
 
       0xca         => Float(read_float(self.rd)),
       0xcb         => Double(read_double(self.rd)),
 
       0xa0 .. 0xbf => String(self._read_raw((c as uint) & 0x1F)),
-      0xd9         => { let b = self.rd.read_u8() as uint; String(self._read_raw(b)) },
-      0xda         => { let b = self.rd.read_be_u16() as uint; String(self._read_raw(b)) },
-      0xdb         => { let b = self.rd.read_be_u32() as uint; String(self._read_raw(b)) },
+      0xd9         => { let b = self.rd.read_u8().unwrap() as uint; String(self._read_raw(b)) },
+      0xda         => { let b = self.rd.read_be_u16().unwrap() as uint; String(self._read_raw(b)) },
+      0xdb         => { let b = self.rd.read_be_u32().unwrap() as uint; String(self._read_raw(b)) },
 
-      0xc4         => { let b = self.rd.read_u8() as uint; Binary(self._read_raw(b)) },
-      0xc5         => { let b = self.rd.read_be_u16() as uint; Binary(self._read_raw(b)) },
-      0xc6         => { let b = self.rd.read_be_u32() as uint; Binary(self._read_raw(b)) },
+      0xc4         => { let b = self.rd.read_u8().unwrap() as uint; Binary(self._read_raw(b)) },
+      0xc5         => { let b = self.rd.read_be_u16().unwrap() as uint; Binary(self._read_raw(b)) },
+      0xc6         => { let b = self.rd.read_be_u32().unwrap() as uint; Binary(self._read_raw(b)) },
 
       0x90 .. 0x9f => self.decode_array((c as uint) & 0x0F),
-      0xdc         => { let b = self.rd.read_be_u16() as uint; self.decode_array(b) },
-      0xdd         => { let b = self.rd.read_be_u32() as uint; self.decode_array(b) },
+      0xdc         => { let b = self.rd.read_be_u16().unwrap() as uint; self.decode_array(b) },
+      0xdd         => { let b = self.rd.read_be_u32().unwrap() as uint; self.decode_array(b) },
      
       0x80 .. 0x8f => self.decode_map((c as uint) & 0x0F),
-      0xde         => { let b = self.rd.read_be_u16() as uint; self.decode_map(b) },
-      0xdf         => { let b = self.rd.read_be_u32() as uint; self.decode_map(b) },
+      0xde         => { let b = self.rd.read_be_u16().unwrap() as uint; self.decode_map(b) },
+      0xdf         => { let b = self.rd.read_be_u32().unwrap() as uint; self.decode_map(b) },
 
       0xd4         => self.decode_ext(1),
       0xd5         => self.decode_ext(2),
       0xd6         => self.decode_ext(4),
       0xd7         => self.decode_ext(8),
       0xd8         => self.decode_ext(16),
-      0xc7         => { let b = self.rd.read_u8() as uint; self.decode_ext(b) },
-      0xc8         => { let b = self.rd.read_be_u16() as uint; self.decode_ext(b) },
-      0xc9         => { let b = self.rd.read_be_u32() as uint; self.decode_ext(b) },
+      0xc7         => { let b = self.rd.read_u8().unwrap() as uint; self.decode_ext(b) },
+      0xc8         => { let b = self.rd.read_be_u16().unwrap() as uint; self.decode_ext(b) },
+      0xc9         => { let b = self.rd.read_be_u32().unwrap() as uint; self.decode_ext(b) },
 
       // XXX: This is only here to satify Rust's pattern checker.
       _            => fail!("Fatal")
@@ -306,11 +306,11 @@ impl<'a> serialize::Decoder for Decoder<'a> {
       match c {
         0xa0 .. 0xbf => self._read_str((c as uint) & 0x1F),
         0xda         => {
-	  let b : uint = self.rd.read_be_u16() as uint;
+	  let b : uint = self.rd.read_be_u16().unwrap() as uint;
 	  self._read_str(b)
 	},
 	0xdb         => {
-	  let b : uint = self.rd.read_be_u32() as uint;
+	  let b : uint = self.rd.read_be_u32().unwrap() as uint;
 	  self._read_str(b)
 	},
         _            => fail!()
