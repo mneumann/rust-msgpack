@@ -3,6 +3,7 @@
 #[license = "MIT/ASL2"];
 #[crate_type = "lib"];
 #[feature(struct_variant)];
+#[allow(unused_must_use, dead_code)];
 
 extern mod serialize = "serialize#0.10-pre";
 

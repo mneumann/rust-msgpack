@@ -1,14 +1,16 @@
 build:
-	rustpkg build msgpack
-	rustpkg build examples/simple
-	rustpkg build examples/value
+	mkdir -p lib bin
+	rustc --out-dir lib src/msgpack/lib.rs
+	rustc -L lib -o bin/simple src/examples/simple/main.rs
+	rustc -L lib -o bin/value src/examples/value/main.rs
 
 test: build
-	rustpkg test msgpack
+	rustc -L lib -o bin/test --test src/msgpack/test.rs
+	./bin/test
 
-install:
-	rustpkg install examples/simple
-	rustpkg install examples/value
+# install:
+# 	rustpkg install examples/simple
+# 	rustpkg install examples/value
 
 clean:
 	rm -rf lib bin build .rust
