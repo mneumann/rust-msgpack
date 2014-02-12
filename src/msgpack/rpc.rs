@@ -1,6 +1,6 @@
 use super::{Value,Encoder,Decoder};
-use extra::serialize;
-use extra::serialize::{Encodable,Decodable};
+use serialize;
+use serialize::{Encodable,Decodable};
 
 pub enum RpcMessage {
   RpcRequest      {msgid: u32, method: ~str, params: ~[Value]}, // 0
