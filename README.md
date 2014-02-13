@@ -28,6 +28,8 @@ msgpack, derive from <code>Encodable</code> and <code>Decodable</code> as shown
 in the following example:
 
 ```rust
+extern mod serialize;
+
 #[deriving(Encodable,Decodable)]
 struct MyStruct {
   a: ~[u32],
