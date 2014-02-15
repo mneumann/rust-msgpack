@@ -414,7 +414,7 @@ impl<'a> Encoder<'a> {
   /// Creates a new Msgpack encoder whose output will be written to the writer
   /// specified.
   pub fn new(wr: &'a mut io::Writer) -> Encoder<'a> { 
-    Encoder { wr: wr } 
+    Encoder { wr: wr }
   }
 
   /// Emits the most efficient representation of the given unsigned integer
