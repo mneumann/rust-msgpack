@@ -11,7 +11,6 @@ use std::{io, str, vec, cast};
 use std::str::from_utf8;
 use std::io::{MemReader,MemWriter};
 
-// use serialize;
 use serialize::{Encodable,Decodable};
 
 mod rpc;
