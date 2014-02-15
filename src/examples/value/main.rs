@@ -4,7 +4,7 @@ use std::os::args;
 
 fn main() {
   let contents = File::open(&Path::new(args()[1])).read_to_end();
-  println!("{:?}", contents);
+  debug!("{:?}", contents);
   let a = msgpack::value::from_msgpack(contents);
-  println!("{:?}", a);
+  debug!("{:?}", a);
 }

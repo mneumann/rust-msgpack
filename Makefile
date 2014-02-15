@@ -1,13 +1,13 @@
 build:
-	rustpkg build msgpack
-	rustpkg build examples/simple
-	rustpkg build examples/value
+	rustpkg build -O msgpack
+#	rustpkg build examples/simple
+	rustpkg build -O examples/value
 
 test: build
 	rustpkg test msgpack
 
 install:
-	rustpkg install examples/simple
+#	rustpkg install examples/simple
 	rustpkg install examples/value
 
 clean:
