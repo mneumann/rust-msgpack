@@ -208,7 +208,7 @@ impl<'a> Decoder<'a> {
       0xc9         => { let b = self.rd.read_be_u32().unwrap() as uint; self.decode_ext(b) },
 
       // XXX: This is only here to satify Rust's pattern checker.
-      _            => fail!("Fatal")
+      _            => unreachable!()
     }
   }
 
