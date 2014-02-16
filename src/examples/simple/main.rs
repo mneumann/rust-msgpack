@@ -1,4 +1,4 @@
-extern mod msgpack = "msgpack#0.1";
+extern crate msgpack = "msgpack#0.1";
 
 fn main() {
   let arr = ~[~"str1", ~"str2"];

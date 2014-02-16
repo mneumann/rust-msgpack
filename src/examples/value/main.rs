@@ -1,4 +1,4 @@
-extern mod msgpack = "msgpack#0.1";
+extern crate msgpack = "msgpack#0.1";
 use std::io::{File};
 use std::os::args;
 

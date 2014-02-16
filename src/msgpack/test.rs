@@ -1,5 +1,5 @@
-extern mod msgpack = "msgpack#0.1";
-extern mod serialize= "serialize#0.10-pre";
+extern crate msgpack = "msgpack#0.1";
+extern crate serialize= "serialize#0.10-pre";
 
 use std::hashmap::HashMap;
 use msgpack::{from_msgpack,to_msgpack};

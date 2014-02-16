@@ -5,7 +5,7 @@
 #[feature(struct_variant)];
 #[allow(unused_must_use, dead_code)];
 
-extern mod serialize = "serialize#0.10-pre";
+extern crate serialize = "serialize#0.10-pre";
 
 use std::{io, str, vec, cast};
 use std::str::from_utf8;
