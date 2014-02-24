@@ -1,7 +1,8 @@
 extern crate msgpack = "msgpack#0.1";
 extern crate serialize= "serialize#0.10-pre";
+extern crate collections;
 
-use std::hashmap::HashMap;
+use collections::hashmap::HashMap;
 use msgpack::{from_msgpack,to_msgpack};
 use serialize::Encodable;
 
