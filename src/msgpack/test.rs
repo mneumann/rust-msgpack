@@ -62,7 +62,7 @@ fn test_circular_char() {
   assert_eq!(a, from_msgpack(to_msgpack(&a)))
 }
 
-#[deriving(Encodable,Decodable,Eq)]
+#[deriving(Encodable,Decodable,Eq,Show)]
 struct S {
   f: u8,
   g: u16,
