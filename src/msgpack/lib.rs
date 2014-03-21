@@ -7,11 +7,13 @@
 
 extern crate serialize = "serialize#0.10-pre";
 
-use std::{io, str, vec, slice, cast};
+use std::{io, str, slice, cast};
 use std::str::from_utf8;
 use std::io::{MemReader,MemWriter};
 
 use serialize::{Encodable,Decodable};
+
+mod rpc;
 
 pub enum Value {
   Nil,
