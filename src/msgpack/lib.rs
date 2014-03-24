@@ -7,7 +7,7 @@
 
 extern crate serialize = "serialize#0.10-pre";
 
-use std::{io, str, vec, cast};
+use std::{io, str, slice, cast};
 use std::str::from_utf8;
 use std::io::{MemReader,MemWriter};
 
@@ -141,11 +141,11 @@ impl<'a> Decoder<'a> {
   }
 
   fn decode_array(&mut self, len: uint) -> Value {
-    Array(vec::from_fn(len, |_| { self.decode_value() }))
+    Array(slice::from_fn(len, |_| { self.decode_value() }))
   }
 
   fn decode_map(&mut self, len: uint) -> Value {
-    Map(vec::from_fn(len, |_| { (self.decode_value(), self.decode_value()) }))
+    Map(slice::from_fn(len, |_| { (self.decode_value(), self.decode_value()) }))
   }
 
   fn decode_ext(&mut self, len: uint) -> Value {
