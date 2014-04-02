@@ -1,9 +1,9 @@
-#[crate_id = "msgpack#0.1"];
-#[comment = "msgpack.org implementation for Rust"];
-#[license = "MIT/ASL2"];
-#[crate_type = "lib"];
-#[feature(struct_variant)];
-#[allow(unused_must_use, dead_code)];
+#![crate_id = "msgpack#0.1"]
+#![comment = "msgpack.org implementation for Rust"]
+#![license = "MIT/ASL2"]
+#![crate_type = "lib"]
+#![feature(struct_variant)]
+#![allow(unused_must_use, dead_code)]
 
 extern crate serialize = "serialize#0.10-pre";
 
@@ -43,8 +43,8 @@ fn read_double(rd: &mut io::Reader) -> f64 {
 
 /// A structure to decode Msgpack from a reader.
 pub struct Decoder<'a> {
-  priv rd: &'a mut io::Reader,
-  priv next_byte: Option<u8>
+  rd: &'a mut io::Reader,
+  next_byte: Option<u8>
 }
 
 impl<'a> Decoder<'a> {
@@ -141,11 +141,11 @@ impl<'a> Decoder<'a> {
   }
 
   fn decode_array(&mut self, len: uint) -> Value {
-    Array(vec::from_fn(len, |_| { self.decode_value() }))
+    Array(Vec::from_fn(len, |_| { self.decode_value() }))
   }
 
   fn decode_map(&mut self, len: uint) -> Value {
-    Map(vec::from_fn(len, |_| { (self.decode_value(), self.decode_value()) }))
+    Map(Vec::from_fn(len, |_| { (self.decode_value(), self.decode_value()) }))
   }
 
   fn decode_ext(&mut self, len: uint) -> Value {
@@ -407,7 +407,7 @@ impl<'a> serialize::Decodable<Decoder<'a>> for Value {
 
 /// A structure for implementing serialization to Msgpack.
 pub struct Encoder<'a> {
-  priv wr: &'a mut io::Writer
+  wr: &'a mut io::Writer
 }
 
 impl<'a> Encoder<'a> {
