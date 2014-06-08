@@ -112,11 +112,11 @@ impl<'a> Decoder<'a> {
   }
 
   fn _read_raw(&mut self, len: uint) -> ~[u8] {
-    self.rd.read_bytes(len).unwrap()
+    self.rd.read_exact(len).unwrap()
   }
 
   fn _read_str(&mut self, len: uint) -> ~str {
-    str::from_utf8_owned(self.rd.read_bytes(len).unwrap()).unwrap()
+    str::from_utf8_owned(self.rd.read_exact(len).unwrap()).unwrap()
   }
 
   fn _read_vec_len(&mut self) -> uint {
@@ -151,7 +151,7 @@ impl<'a> Decoder<'a> {
   fn decode_ext(&mut self, len: uint) -> Value {
     let typ = self.rd.read_i8().unwrap();
     if typ < 0 { fail!("Reserved type") }
-    let data = self.rd.read_bytes(len).unwrap();
+    let data = self.rd.read_exact(len).unwrap();
     Extended(typ, data)
   }
 
