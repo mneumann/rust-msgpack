@@ -7,7 +7,7 @@
 
 extern crate serialize = "serialize#0.10-pre";
 
-use std::{io, str, vec, cast};
+use std::{io, str, slice, cast};
 use std::str::from_utf8;
 use std::io::{MemReader,MemWriter};
 
@@ -64,7 +64,7 @@ impl<'a> Decoder<'a> {
       Some(byte) => byte,
       None => {
         self.next_byte = self.rd.read_byte().ok();
-        match self.next_byte { 
+        match self.next_byte {
           Some(byte) => byte,
           None => fail!("Unexpected EOF")
         }
@@ -79,7 +79,7 @@ impl<'a> Decoder<'a> {
         byte
       }
       None => {
-        match self.rd.read_byte().ok() { 
+        match self.rd.read_byte().ok() {
           Some(byte) => byte,
           None => fail!("Unexpected EOF")
         }
@@ -141,11 +141,11 @@ impl<'a> Decoder<'a> {
   }
 
   fn decode_array(&mut self, len: uint) -> Value {
-    Array(vec::from_fn(len, |_| { self.decode_value() }))
+    Array(slice::from_fn(len, |_| { self.decode_value() }))
   }
 
   fn decode_map(&mut self, len: uint) -> Value {
-    Map(vec::from_fn(len, |_| { (self.decode_value(), self.decode_value()) }))
+    Map(slice::from_fn(len, |_| { (self.decode_value(), self.decode_value()) }))
   }
 
   fn decode_ext(&mut self, len: uint) -> Value {
@@ -192,7 +192,7 @@ impl<'a> Decoder<'a> {
       0x90 .. 0x9f => self.decode_array((c as uint) & 0x0F),
       0xdc         => { let b = self.rd.read_be_u16().unwrap() as uint; self.decode_array(b) },
       0xdd         => { let b = self.rd.read_be_u32().unwrap() as uint; self.decode_array(b) },
-     
+
       0x80 .. 0x8f => self.decode_map((c as uint) & 0x0F),
       0xde         => { let b = self.rd.read_be_u16().unwrap() as uint; self.decode_map(b) },
       0xdf         => { let b = self.rd.read_be_u32().unwrap() as uint; self.decode_map(b) },
@@ -326,7 +326,7 @@ impl<'a> serialize::Decoder for Decoder<'a> {
       let len = self._read_vec_len();
       f(self, len)
     }
-    
+
     #[inline(always)]
     fn read_seq_elt<T>(&mut self, _idx: uint, f: |&mut Decoder<'a>| -> T) -> T {
       f(self)
@@ -413,7 +413,7 @@ pub struct Encoder<'a> {
 impl<'a> Encoder<'a> {
   /// Creates a new Msgpack encoder whose output will be written to the writer
   /// specified.
-  pub fn new(wr: &'a mut io::Writer) -> Encoder<'a> { 
+  pub fn new(wr: &'a mut io::Writer) -> Encoder<'a> {
     Encoder { wr: wr }
   }
 
