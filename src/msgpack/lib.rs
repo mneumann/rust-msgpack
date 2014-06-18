@@ -1,20 +1,22 @@
-#[crate_id = "msgpack#0.1"];
-#[comment = "msgpack.org implementation for Rust"];
-#[license = "MIT/ASL2"];
-#[crate_type = "lib"];
-#[feature(struct_variant)];
-#[allow(unused_must_use, dead_code)];
+#![crate_id = "msgpack#0.1"]
+#![comment = "msgpack.org implementation for Rust"]
+#![license = "MIT/ASL2"]
+#![crate_type = "lib"]
+#![feature(struct_variant)]
+#![allow(unused_must_use, dead_code)]
 
-extern crate serialize = "serialize#0.10-pre";
+extern crate serialize;
 
-use std::{io, str, slice, cast};
+use std::{io, str};
 use std::str::from_utf8;
-use std::io::{MemReader,MemWriter};
+use std::io::{MemReader, MemWriter, IoResult, IoError, InvalidInput};
+use std::mem;
 
-use serialize::{Encodable,Decodable};
+use serialize::{Encodable, Decodable};
 
 mod rpc;
 
+#[deriving(Show)]
 pub enum Value {
   Nil,
   Boolean(bool),
@@ -22,29 +24,31 @@ pub enum Value {
   Unsigned(u64),
   Float(f32),
   Double(f64),
-  Array(~[Value]),
-  Map(~[(Value, Value)]),
-  String(~[u8]),
-  Binary(~[u8]),
-  Extended(i8, ~[u8])
+  Array(Vec<Value>),
+  Map(Vec<(Value, Value)>),
+  Str(Vec<u8>),
+  Binary(Vec<u8>),
+  Extended(i8, Vec<u8>)
 }
 
 #[inline(always)]
-fn read_float(rd: &mut io::Reader) -> f32 {
-  let v = rd.read_be_u32().unwrap();
-  unsafe { cast::transmute(v) }
+fn read_float(rd: &mut io::Reader) -> IoResult<f32> {
+  rd.read_be_u32().map(|v| unsafe { mem::transmute(v) })
 }
 
 #[inline(always)]
-fn read_double(rd: &mut io::Reader) -> f64 {
-  let v = rd.read_be_u64().unwrap();
-  unsafe { cast::transmute(v) }
+fn read_double(rd: &mut io::Reader) -> IoResult<f64> {
+  rd.read_be_u64().map(|v| unsafe { mem::transmute(v) })
+}
+
+pub fn _invalid_input(s: &'static str) -> IoError {
+    IoError{kind: InvalidInput, desc: s, detail: None}
 }
 
 /// A structure to decode Msgpack from a reader.
 pub struct Decoder<'a> {
-  priv rd: &'a mut io::Reader,
-  priv next_byte: Option<u8>
+  rd: &'a mut io::Reader,
+  next_byte: Option<u8>
 }
 
 impl<'a> Decoder<'a> {
@@ -59,152 +63,187 @@ impl<'a> Decoder<'a> {
 }
 
 impl<'a> Decoder<'a> {
-  fn _peek_byte(&mut self) -> u8 {
+  fn _peek_byte(&mut self) -> IoResult<u8> {
     match self.next_byte {
-      Some(byte) => byte,
+      Some(byte) => Ok(byte),
       None => {
-        self.next_byte = self.rd.read_byte().ok();
-        match self.next_byte {
-          Some(byte) => byte,
-          None => fail!("Unexpected EOF")
+        match self.rd.read_byte() {
+          Ok(byte) => {
+            self.next_byte = Some(byte);
+            Ok(byte)
+          }
+          err => err
         }
+          
       }
     }
   }
 
-  fn _read_byte(&mut self) -> u8 {
+  fn _read_byte(&mut self) -> IoResult<u8> {
     match self.next_byte {
       Some(byte) => {
         self.next_byte = None;
-        byte
+        Ok(byte)
       }
       None => {
-        match self.rd.read_byte().ok() {
-          Some(byte) => byte,
-          None => fail!("Unexpected EOF")
-        }
+        self.rd.read_byte()
       }
     }
   }
 
-  fn _read_unsigned(&mut self) -> u64 {
-    let c = self._read_byte();
+  fn _read_unsigned(&mut self) -> IoResult<u64> {
+    let c = try!(self._read_byte());
     match c {
-      0x00 .. 0x7f => c as u64,
-      0xcc         => self.rd.read_u8().unwrap() as u64,
-      0xcd         => self.rd.read_be_u16().unwrap() as u64,
-      0xce         => self.rd.read_be_u32().unwrap() as u64,
-      0xcf         => self.rd.read_be_u64().unwrap(),
-      _            => fail!("No unsigned integer")
+      0x00 .. 0x7f => Ok(c as u64),
+      0xcc         => Ok(try!(self.rd.read_u8()) as u64),
+      0xcd         => Ok(try!(self.rd.read_be_u16()) as u64),
+      0xce         => Ok(try!(self.rd.read_be_u32()) as u64),
+      0xcf         => self.rd.read_be_u64(),
+      _            => Err(_invalid_input("No unsigned integer"))
     }
   }
 
-  fn _read_signed(&mut self) -> i64 {
-    let c = self._read_byte();
-    match c {
-      0xd0         => self.rd.read_i8().unwrap() as i64,
-      0xd1         => self.rd.read_be_i16().unwrap() as i64,
-      0xd2         => self.rd.read_be_i32().unwrap() as i64,
-      0xd3         => self.rd.read_be_i64().unwrap(),
-      0xe0 .. 0xff => (c as i8) as i64,
-      _            => fail!("No signed integer")
+  fn _read_signed(&mut self) -> IoResult<i64> {
+    let c = try!(self._read_byte());
+    match c { 
+      0xd0         => Ok(try!(self.rd.read_i8()) as i64),
+      0xd1         => Ok(try!(self.rd.read_be_i16()) as i64),
+      0xd2         => Ok(try!(self.rd.read_be_i32()) as i64),
+      0xd3         => self.rd.read_be_i64(),
+      0xe0 .. 0xff => Ok((c as i8) as i64),
+      _            => Err(_invalid_input("No signed integer"))
     }
   }
 
-  fn _read_raw(&mut self, len: uint) -> ~[u8] {
-    self.rd.read_exact(len).unwrap()
+  fn _read_raw(&mut self, len: uint) -> IoResult<Vec<u8>> {
+    self.rd.read_exact(len)
   }
 
-  fn _read_str(&mut self, len: uint) -> ~str {
-    str::from_utf8_owned(self.rd.read_exact(len).unwrap()).unwrap()
-  }
-
-  fn _read_vec_len(&mut self) -> uint {
-    let c = self._read_byte();
-
-    match c {
-      0x90 .. 0x9f => (c as uint) & 0x0F,
-      0xdc         => self.rd.read_be_u16().unwrap() as uint,
-      0xdd         => self.rd.read_be_u32().unwrap() as uint,
-      _            => fail!("Invalid byte code in _read_vec_len")
+  fn _read_str(&mut self, len: uint) -> IoResult<String> {
+    match str::from_utf8_owned(try!(self.rd.read_exact(len))) {
+        Ok(s)  => Ok(s),
+        Err(_) => Err(_invalid_input("No UTF-8 string"))
     }
   }
 
-  fn _read_map_len(&mut self) -> uint {
-    let c = self._read_byte();
+  fn _read_vec_len(&mut self) -> IoResult<uint> {
+    let c = try!(self._read_byte());
+
     match c {
-      0x80 .. 0x8f => (c as uint) & 0x0F,
-      0xde         => self.rd.read_be_u16().unwrap() as uint,
-      0xdf         => self.rd.read_be_u32().unwrap() as uint,
-      _            => fail!("Invalid byte code in _read_map_len")
+      0x90 .. 0x9f => Ok((c as uint) & 0x0F),
+      0xdc         => self.rd.read_be_u16().map(|i| i as uint),
+      0xdd         => self.rd.read_be_u32().map(|i| i as uint),
+      _            => Err(_invalid_input("Invalid byte code in _read_vec_len"))
     }
   }
 
-  fn decode_array(&mut self, len: uint) -> Value {
-    Array(slice::from_fn(len, |_| { self.decode_value() }))
-  }
-
-  fn decode_map(&mut self, len: uint) -> Value {
-    Map(slice::from_fn(len, |_| { (self.decode_value(), self.decode_value()) }))
-  }
-
-  fn decode_ext(&mut self, len: uint) -> Value {
-    let typ = self.rd.read_i8().unwrap();
-    if typ < 0 { fail!("Reserved type") }
-    let data = self.rd.read_exact(len).unwrap();
-    Extended(typ, data)
-  }
-
-  fn decode_value(&mut self) -> Value {
-    let c: u8 = self._read_byte();
+  fn _read_map_len(&mut self) -> IoResult<uint> {
+    let c = try!(self._read_byte());
     match c {
-      0xc0         => Nil,
+      0x80 .. 0x8f => Ok((c as uint) & 0x0F),
+      0xde         => self.rd.read_be_u16().map(|i| i as uint),
+      0xdf         => self.rd.read_be_u32().map(|i| i as uint),
+      _            => Err(_invalid_input("Invalid byte code in _read_map_len"))
+    }
+  }
 
-      0xc1         => fail!("Reserved"),
+  fn decode_array(&mut self, len: uint) -> IoResult<Value> {
+    let mut v = Vec::with_capacity(len);
+    for _ in range(0, len) {
+      v.push(try!(self.decode_value()));
+    }
+    Ok(Array(v))
+  }
 
-      0xc2         => Boolean(false),
-      0xc3         => Boolean(true),
+  fn decode_map(&mut self, len: uint) -> IoResult<Value> {
+    let mut v = Vec::with_capacity(len);
+    for _ in range(0, len) {
+      let a = try!(self.decode_value());
+      let b = try!(self.decode_value());
+      v.push((a, b));
+    }
+    Ok(Map(v))
+  }
 
-      0x00 .. 0x7f => Unsigned(c as u64),
-      0xcc         => Unsigned(self.rd.read_u8().unwrap() as u64),
-      0xcd         => Unsigned(self.rd.read_be_u16().unwrap() as u64),
-      0xce         => Unsigned(self.rd.read_be_u32().unwrap() as u64),
-      0xcf         => Unsigned(self.rd.read_be_u64().unwrap()),
+  fn decode_ext(&mut self, len: uint) -> IoResult<Value> {
+    let typ = try!(self.rd.read_i8());
+    if typ < 0 { 
+      return Err(_invalid_input("Reserved type"));
+    }
+    Ok(Extended(typ, try!(self.rd.read_exact(len))))
+  }
 
-      0xd0         => Integer(self.rd.read_i8().unwrap() as i64),
-      0xd1         => Integer(self.rd.read_be_i16().unwrap() as i64),
-      0xd2         => Integer(self.rd.read_be_i32().unwrap() as i64),
-      0xd3         => Integer(self.rd.read_be_i64().unwrap()),
-      0xe0 .. 0xff => Integer((c as i8) as i64),
+  fn decode_value(&mut self) -> IoResult<Value> {
+    let c = try!(self._read_byte());
+    match c {
+      0xc0         => Ok(Nil),
 
-      0xca         => Float(read_float(self.rd)),
-      0xcb         => Double(read_double(self.rd)),
+      0xc1         => Err(_invalid_input("Reserved")),
 
-      0xa0 .. 0xbf => String(self._read_raw((c as uint) & 0x1F)),
-      0xd9         => { let b = self.rd.read_u8().unwrap() as uint; String(self._read_raw(b)) },
-      0xda         => { let b = self.rd.read_be_u16().unwrap() as uint; String(self._read_raw(b)) },
-      0xdb         => { let b = self.rd.read_be_u32().unwrap() as uint; String(self._read_raw(b)) },
+      0xc2         => Ok(Boolean(false)),
+      0xc3         => Ok(Boolean(true)),
 
-      0xc4         => { let b = self.rd.read_u8().unwrap() as uint; Binary(self._read_raw(b)) },
-      0xc5         => { let b = self.rd.read_be_u16().unwrap() as uint; Binary(self._read_raw(b)) },
-      0xc6         => { let b = self.rd.read_be_u32().unwrap() as uint; Binary(self._read_raw(b)) },
+      0x00 .. 0x7f => Ok(Unsigned(c as u64)),
+      0xcc         => self.rd.read_u8().map(|i| Unsigned(i as u64)),
+      0xcd         => self.rd.read_be_u16().map(|i| Unsigned(i as u64)),
+      0xce         => self.rd.read_be_u32().map(|i| Unsigned(i as u64)),
+      0xcf         => self.rd.read_be_u64().map(|i| Unsigned(i)),
+
+      0xd0         => self.rd.read_i8().map(|i| Integer(i as i64)),
+      0xd1         => self.rd.read_be_i16().map(|i| Integer(i as i64)),
+      0xd2         => self.rd.read_be_i32().map(|i| Integer(i as i64)),
+      0xd3         => self.rd.read_be_i64().map(|i| Integer(i)),
+      0xe0 .. 0xff => Ok(Integer((c as i8) as i64)),
+
+      0xca         => read_float(self.rd).map(|i| Float(i)),
+      0xcb         => read_double(self.rd).map(|i| Double(i)),
+
+      0xa0 .. 0xbf => self._read_raw((c as uint) & 0x1F).map(|i| Str(i)),
+      0xd9         => {
+                        let l = try!(self.rd.read_u8()) as uint;
+                        self._read_raw(l).map(|i| Str(i))
+                      }
+      0xda         => {
+                        let l = try!(self.rd.read_be_u16()) as uint;
+                        self._read_raw(l).map(|i| Str(i))
+                      }
+      0xdb         => {
+                        let l = try!(self.rd.read_be_u32()) as uint;
+                        self._read_raw(l).map(|i| Str(i))
+                      }
+
+      0xc4         => {
+                        let l = try!(self.rd.read_u8()) as uint;
+                        self._read_raw(l).map(|i| Binary(i))
+                      }
+
+      0xc5         => {
+                        let l = try!(self.rd.read_be_u16()) as uint;
+                        self._read_raw(l).map(|i| Binary(i))
+                      }
+
+
+      0xc6         => {
+                        let l = try!(self.rd.read_be_u32()) as uint;
+                        self._read_raw(l).map(|i| Binary(i))
+                      }
 
       0x90 .. 0x9f => self.decode_array((c as uint) & 0x0F),
-      0xdc         => { let b = self.rd.read_be_u16().unwrap() as uint; self.decode_array(b) },
-      0xdd         => { let b = self.rd.read_be_u32().unwrap() as uint; self.decode_array(b) },
+      0xdc         => { let l = try!(self.rd.read_be_u16()) as uint; self.decode_array(l) },
+      0xdd         => { let l = try!(self.rd.read_be_u32()) as uint; self.decode_array(l) },
 
       0x80 .. 0x8f => self.decode_map((c as uint) & 0x0F),
-      0xde         => { let b = self.rd.read_be_u16().unwrap() as uint; self.decode_map(b) },
-      0xdf         => { let b = self.rd.read_be_u32().unwrap() as uint; self.decode_map(b) },
+      0xde         => { let l = try!(self.rd.read_be_u16()) as uint; self.decode_map(l) },
+      0xdf         => { let l = try!(self.rd.read_be_u32()) as uint; self.decode_map(l) },
 
       0xd4         => self.decode_ext(1),
       0xd5         => self.decode_ext(2),
       0xd6         => self.decode_ext(4),
       0xd7         => self.decode_ext(8),
       0xd8         => self.decode_ext(16),
-      0xc7         => { let b = self.rd.read_u8().unwrap() as uint; self.decode_ext(b) },
-      0xc8         => { let b = self.rd.read_be_u16().unwrap() as uint; self.decode_ext(b) },
-      0xc9         => { let b = self.rd.read_be_u32().unwrap() as uint; self.decode_ext(b) },
+      0xc7         => { let l = try!(self.rd.read_u8()) as uint; self.decode_ext(l) },
+      0xc8         => { let l = try!(self.rd.read_be_u16()) as uint; self.decode_ext(l) },
+      0xc9         => { let l = try!(self.rd.read_be_u32()) as uint; self.decode_ext(l) },
 
       // XXX: This is only here to satify Rust's pattern checker.
       _            => unreachable!()
@@ -214,155 +253,195 @@ impl<'a> Decoder<'a> {
 
 }
 
-impl<'a> serialize::Decoder for Decoder<'a> {
+impl<'a> serialize::Decoder<IoError> for Decoder<'a> {
     #[inline(always)]
-    fn read_nil(&mut self) -> () {
-      if self._read_byte() != 0xc0 { fail!("Invalid nil opcode") }
+    fn read_nil(&mut self) -> IoResult<()> {
+      match self._read_byte() {
+        Ok(0xc0) => Ok(()),
+        Ok(_)    => Err(_invalid_input("Invalid nil opcode")),
+        Err(e)   => Err(e)
+      }
     }
 
     #[inline(always)]
-    fn read_u64(&mut self) -> u64 { self._read_unsigned() }
+    fn read_u64(&mut self) -> IoResult<u64> { self._read_unsigned() }
 
     #[inline(always)]
-    fn read_uint(&mut self) -> uint {
-      self._read_unsigned().to_uint().unwrap()
+    fn read_uint(&mut self) -> IoResult<uint> {
+      match try!(self._read_unsigned()).to_uint() {
+          Some(i) => Ok(i),
+          None    => Err(_invalid_input("value does not fit inside uint"))
+      }
     }
 
     #[inline(always)]
-    fn read_u32(&mut self) -> u32 {
-      self._read_unsigned().to_u32().unwrap()
+    fn read_u32(&mut self) -> IoResult<u32> {
+      match try!(self._read_unsigned()).to_u32() {
+          Some(i) => Ok(i),
+          None    => Err(_invalid_input("value does not fit inside u32"))
+      }
     }
 
     #[inline(always)]
-    fn read_u16(&mut self) -> u16 {
-      self._read_unsigned().to_u16().unwrap()
+    fn read_u16(&mut self) -> IoResult<u16> {
+      match try!(self._read_unsigned()).to_u16() {
+          Some(i) => Ok(i),
+          None    => Err(_invalid_input("value does not fit inside u16"))
+      }
     }
 
     #[inline(always)]
-    fn read_u8(&mut self) -> u8 {
-      self._read_unsigned().to_u8().unwrap()
+    fn read_u8(&mut self) -> IoResult<u8> {
+      match try!(self._read_unsigned()).to_u8() {
+          Some(i) => Ok(i),
+          None    => Err(_invalid_input("value does not fit inside u8"))
+      }
     }
 
     #[inline(always)]
-    fn read_i64(&mut self) -> i64 {
+    fn read_i64(&mut self) -> IoResult<i64> {
       self._read_signed()
     }
 
     #[inline(always)]
-    fn read_int(&mut self) -> int {
-      self._read_signed().to_int().unwrap()
-    }
-
-    #[inline(always)]
-    fn read_i32(&mut self) -> i32 {
-      self._read_signed().to_i32().unwrap()
-    }
-
-    #[inline(always)]
-    fn read_i16(&mut self) -> i16 {
-      self._read_signed().to_i16().unwrap()
-    }
-
-    #[inline(always)]
-    fn read_i8(&mut self) -> i8 {
-      self._read_signed().to_i8().unwrap()
-    }
-
-    #[inline(always)]
-    fn read_bool(&mut self) -> bool {
-      match self._read_byte() {
-        0xc2 => false,
-        0xc3 => true,
-        _    => fail!()
+    fn read_int(&mut self) -> IoResult<int> {
+      match try!(self._read_signed()).to_int() {
+          Some(i) => Ok(i),
+          None    => Err(_invalid_input("value does not fit inside int"))
       }
     }
 
     #[inline(always)]
-    fn read_f64(&mut self) -> f64 {
-      match self._read_byte() {
+    fn read_i32(&mut self) -> IoResult<i32> {
+      match try!(self._read_signed()).to_i32() {
+          Some(i) => Ok(i),
+          None    => Err(_invalid_input("value does not fit inside i32"))
+      }
+    }
+
+    #[inline(always)]
+    fn read_i16(&mut self) -> IoResult<i16> {
+      match try!(self._read_signed()).to_i16() {
+          Some(i) => Ok(i),
+          None    => Err(_invalid_input("value does not fit inside i16"))
+      }
+    }
+
+    #[inline(always)]
+    fn read_i8(&mut self) -> IoResult<i8> {
+      match try!(self._read_signed()).to_i8() {
+          Some(i) => Ok(i),
+          None    => Err(_invalid_input("value does not fit inside i8"))
+      }
+    }
+
+    #[inline(always)]
+    fn read_bool(&mut self) -> IoResult<bool> {
+      match try!(self._read_byte()) {
+        0xc2 => Ok(false),
+        0xc3 => Ok(true),
+        _    => Err(_invalid_input("invalid bool"))
+      }
+    }
+
+    #[inline(always)]
+    fn read_f64(&mut self) -> IoResult<f64> {
+      match try!(self._read_byte()) {
         0xcb => read_double(self.rd),
-        _    => fail!()
+        _    => Err(_invalid_input("invalid f64"))
       }
     }
 
     #[inline(always)]
-    fn read_f32(&mut self) -> f32 {
-      match self._read_byte() {
+    fn read_f32(&mut self) -> IoResult<f32> {
+      match try!(self._read_byte()) {
         0xca => read_float(self.rd),
-        _    => fail!()
+        _    => Err(_invalid_input("invalid f32"))
       }
     }
 
+    // XXX: Optimize
     #[inline(always)]
-    fn read_char(&mut self) -> char {
-      let s = self.read_str();
-      if s.len() != 1 { fail!("no character") }
-      s[0] as char
+    fn read_char(&mut self) -> IoResult<char> {
+      let s = try!(self.read_str());
+      if s.len() != 1 { return Err(_invalid_input("invalid char")) }
+      Ok(s.as_slice()[0] as char)
     }
 
     #[inline(always)]
-    fn read_str(&mut self) -> ~str {
-      let c = self._read_byte();
+    fn read_str(&mut self) -> IoResult<String> {
+      let c = try!(self._read_byte());
       match c {
         0xa0 .. 0xbf => self._read_str((c as uint) & 0x1F),
         0xda         => {
-	  let b : uint = self.rd.read_be_u16().unwrap() as uint;
-	  self._read_str(b)
+	  let l = try!(self.rd.read_be_u16()) as uint;
+	  self._read_str(l)
 	},
 	0xdb         => {
-	  let b : uint = self.rd.read_be_u32().unwrap() as uint;
-	  self._read_str(b)
+	  let l = try!(self.rd.read_be_u32()) as uint;
+	  self._read_str(l)
 	},
-        _            => fail!()
+        _            => Err(_invalid_input("Invalid string"))
       }
     }
 
-    fn read_enum<T>(&mut self, _name: &str, _f: |&mut Decoder<'a>| -> T) -> T { fail!() }
-    fn read_enum_variant<T>(&mut self, _names: &[&str], _f: |&mut Decoder<'a>, uint| -> T) -> T { fail!() }
-    fn read_enum_variant_arg<T>(&mut self, _idx: uint, _f: |&mut Decoder<'a>| -> T) -> T { fail!() }
+    fn read_enum<T>(&mut self, _name: &str, _f: |&mut Decoder<'a>| -> IoResult<T>) -> IoResult<T> {
+        // XXX
+        Err(_invalid_input("read_enum not supported by rust-msgpack"))
+    }
+    fn read_enum_variant<T>(&mut self, _names: &[&str], _f: |&mut Decoder<'a>, uint| -> IoResult<T>) -> IoResult<T> {
+        Err(_invalid_input("read_enum_variant not supported by rust-msgpack"))
+    }
+    fn read_enum_variant_arg<T>(&mut self, _idx: uint, _f: |&mut Decoder<'a>| -> IoResult<T>) -> IoResult<T> {
+        Err(_invalid_input("read_enum_variant_arg not supported by rust-msgpack"))
+    }
 
     #[inline(always)]
-    fn read_seq<T>(&mut self, f: |&mut Decoder<'a>, uint| -> T) -> T {
-      let len = self._read_vec_len();
+    fn read_seq<T>(&mut self, f: |&mut Decoder<'a>, uint| -> IoResult<T>) -> IoResult<T> {
+      let len = try!(self._read_vec_len());
       f(self, len)
     }
 
     #[inline(always)]
-    fn read_seq_elt<T>(&mut self, _idx: uint, f: |&mut Decoder<'a>| -> T) -> T {
+    fn read_seq_elt<T>(&mut self, _idx: uint, f: |&mut Decoder<'a>| -> IoResult<T>) -> IoResult<T> {
       f(self)
     }
 
     #[inline(always)]
-    fn read_struct<T>(&mut self, _name: &str, len: uint, f: |&mut Decoder<'a>| -> T) -> T {
+    fn read_struct<T>(&mut self, _name: &str, len: uint, f: |&mut Decoder<'a>| -> IoResult<T>) -> IoResult<T> {
       // XXX: Why are we using a map length here?
-      if len != self._read_map_len() { fail!() }
-      f(self)
+      if len != try!(self._read_map_len()) {
+        Err(_invalid_input("invalid length for struct"))
+      } else {
+        f(self)
+      }
     }
 
     #[inline(always)]
-    fn read_struct_field<T>(&mut self, _name: &str, _idx: uint, f: |&mut Decoder<'a>| -> T) -> T {
+    fn read_struct_field<T>(&mut self, _name: &str, _idx: uint, f: |&mut Decoder<'a>| -> IoResult<T>) -> IoResult<T> {
       f(self)
     }
 
-    fn read_option<T>(&mut self, f: |&mut Decoder<'a>, bool| -> T) -> T {
-      match self._peek_byte() {
+    fn read_option<T>(&mut self, f: |&mut Decoder<'a>, bool| -> IoResult<T>) -> IoResult<T> {
+      match try!(self._peek_byte()) {
         0xc0 => f(self, false),
         _    => f(self, true)
       }
     }
 
-    fn read_map<T>(&mut self, f: |&mut Decoder<'a>, uint| -> T) -> T {
-      let len = self._read_map_len();
+    fn read_map<T>(&mut self, f: |&mut Decoder<'a>, uint| -> IoResult<T>) -> IoResult<T> {
+      let len = try!(self._read_map_len());
       f(self, len)
     }
-    fn read_map_elt_key<T>(&mut self, _idx: uint, f: |&mut Decoder<'a>| -> T) -> T { f(self) }
-    fn read_map_elt_val<T>(&mut self, _idx: uint, f: |&mut Decoder<'a>| -> T) -> T { f(self) }
+
+    fn read_map_elt_key<T>(&mut self, _idx: uint, f: |&mut Decoder<'a>| -> IoResult<T>) -> IoResult<T> { f(self) }
+    fn read_map_elt_val<T>(&mut self, _idx: uint, f: |&mut Decoder<'a>| -> IoResult<T>) -> IoResult<T> { f(self) }
 
 
     fn read_enum_struct_variant<T>(&mut self,
                                    names: &[&str],
-                                   f: |&mut Decoder<'a>, uint| -> T)
-                                   -> T {
+                                   f: |&mut Decoder<'a>, uint| -> IoResult<T>)
+                                   -> IoResult<T> {
       self.read_enum_variant(names, f)
     }
 
@@ -370,36 +449,36 @@ impl<'a> serialize::Decoder for Decoder<'a> {
     fn read_enum_struct_variant_field<T>(&mut self,
                                          _name: &str,
                                          idx: uint,
-                                         f: |&mut Decoder<'a>| -> T)
-                                         -> T {
+                                         f: |&mut Decoder<'a>| -> IoResult<T>)
+                                         -> IoResult<T> {
       self.read_enum_variant_arg(idx, f)
     }
 
-    fn read_tuple<T>(&mut self, f: |&mut Decoder<'a>, uint| -> T) -> T {
+    fn read_tuple<T>(&mut self, f: |&mut Decoder<'a>, uint| -> IoResult<T>) -> IoResult<T> {
       self.read_seq(f)
     }
 
-    fn read_tuple_arg<T>(&mut self, idx: uint, f: |&mut Decoder<'a>| -> T) -> T {
+    fn read_tuple_arg<T>(&mut self, idx: uint, f: |&mut Decoder<'a>| -> IoResult<T>) -> IoResult<T> {
       self.read_seq_elt(idx, f)
     }
 
     fn read_tuple_struct<T>(&mut self,
                             _name: &str,
-                            f: |&mut Decoder<'a>, uint| -> T)
-                            -> T {
+                            f: |&mut Decoder<'a>, uint| -> IoResult<T>)
+                            -> IoResult<T> {
       self.read_tuple(f)
     }
 
     fn read_tuple_struct_arg<T>(&mut self,
                                 idx: uint,
-                                f: |&mut Decoder<'a>| -> T)
-                                -> T {
+                                f: |&mut Decoder<'a>| -> IoResult<T>)
+                                -> IoResult<T> {
       self.read_tuple_arg(idx, f)
     }
 }
 
-impl<'a> serialize::Decodable<Decoder<'a>> for Value {
-  fn decode(s: &mut Decoder<'a>) -> Value {
+impl<'a> serialize::Decodable<Decoder<'a>, IoError> for Value {
+  fn decode(s: &mut Decoder<'a>) -> IoResult<Value> {
     s.decode_value()
   }
 }
@@ -407,7 +486,7 @@ impl<'a> serialize::Decodable<Decoder<'a>> for Value {
 
 /// A structure for implementing serialization to Msgpack.
 pub struct Encoder<'a> {
-  priv wr: &'a mut io::Writer
+  wr: &'a mut io::Writer
 }
 
 impl<'a> Encoder<'a> {
@@ -418,78 +497,84 @@ impl<'a> Encoder<'a> {
   }
 
   /// Emits the most efficient representation of the given unsigned integer
-  fn _emit_unsigned(&mut self, v: u64) {
+  fn _emit_unsigned(&mut self, v: u64) -> IoResult<()> {
     if v <= 127 {
-      self.wr.write_u8(v as u8);
+      try!(self.wr.write_u8(v as u8));
     }
     else if v <= 0xFF {
-      self.wr.write_u8(0xcc);
-      self.wr.write_u8(v as u8);
+      try!(self.wr.write_u8(0xcc));
+      try!(self.wr.write_u8(v as u8));
     }
     else if v <= 0xFFFF {
-      self.wr.write_u8(0xcd);
-      self.wr.write_be_u16(v as u16);
+      try!(self.wr.write_u8(0xcd));
+      try!(self.wr.write_be_u16(v as u16));
     }
     else if v <= 0xFFFF_FFFF {
-      self.wr.write_u8(0xce);
-      self.wr.write_be_u32(v as u32);
+      try!(self.wr.write_u8(0xce));
+      try!(self.wr.write_be_u32(v as u32));
     }
     else {
-      self.wr.write_u8(0xcf);
-      self.wr.write_be_u64(v);
+      try!(self.wr.write_u8(0xcf));
+      try!(self.wr.write_be_u64(v));
     }
+
+    Ok(())
   }
 
   /// Emits the most efficient representation of the given signed integer
-  fn _emit_signed(&mut self, v: i64) {
+  fn _emit_signed(&mut self, v: i64) -> IoResult<()> {
     if v >= -(1i64<<7) && v < (1i64<<7) {
       let v = v as i8;
       if (v as u8) & 0xe0 != 0xe0 {
-        self.wr.write_u8(0xd0);
+        try!(self.wr.write_u8(0xd0));
       }
-      self.wr.write_u8(v as u8);
+      try!(self.wr.write_u8(v as u8));
     }
     else if v >= -(1i64<<15) && v < (1i64<<15) {
       let v = v as i16;
-      self.wr.write_u8(0xd1);
-      self.wr.write_be_i16(v);
+      try!(self.wr.write_u8(0xd1));
+      try!(self.wr.write_be_i16(v));
     }
     else if v >= -(1i64<<31) && v < (1i64<<31) {
       let v = v as i32;
-      self.wr.write_u8(0xd2);
-      self.wr.write_be_i32(v);
+      try!(self.wr.write_u8(0xd2));
+      try!(self.wr.write_be_i32(v));
     }
     else {
-      self.wr.write_u8(0xd3);
-      self.wr.write_be_i64(v);
+      try!(self.wr.write_u8(0xd3));
+      try!(self.wr.write_be_i64(v));
     }
+
+    Ok(())
   }
 
   #[inline(always)]
-  fn _emit_len(&mut self, len: uint, (op1, sz1): (u8, uint), (op2, sz2): (u8, uint), op3: u8, op4: u8) {
+  fn _emit_len(&mut self, len: uint, (op1, sz1): (u8, uint), (op2, sz2): (u8, uint), op3: u8, op4: u8) -> IoResult<()> {
     if len < sz1 {
-      self.wr.write_u8(op1);
+      try!(self.wr.write_u8(op1));
     } else if len < sz2 {
-      self.wr.write_u8(op2);
-      self.wr.write_u8(len as u8);
+      try!(self.wr.write_u8(op2));
+      try!(self.wr.write_u8(len as u8));
     } else if len <= 0xFFFF {
-      self.wr.write_u8(op3);
-      self.wr.write_be_u16(len as u16);
+      try!(self.wr.write_u8(op3));
+      try!(self.wr.write_be_u16(len as u16));
     } else {
-      assert!(len <= 0xFFFF_FFFF);
-      self.wr.write_u8(op4);
-      self.wr.write_be_u32(len as u32);
+      assert!(len <= 0xFFFF_FFFF); // XXX
+      try!(self.wr.write_u8(op4));
+      try!(self.wr.write_be_u32(len as u32));
     }
+
+    Ok(())
   }
 
-  fn _emit_str_len(&mut self, len: uint) {
+  fn _emit_str_len(&mut self, len: uint) -> IoResult<()> {
     self._emit_len(len, (0xa0_u8 | (len & 31) as u8, 32),
                         (0xd9, 256),
                          0xda,
                          0xdb)
   }
 
-  fn _emit_bin_len(&mut self, len: uint) {
+  fn _emit_bin_len(&mut self, len: uint) -> IoResult<()> {
     self._emit_len(len, (0x00, 0),
                         (0xc4, 256),
                          0xc5,
@@ -497,14 +582,14 @@ impl<'a> Encoder<'a> {
   }
 
 
-  fn _emit_array_len(&mut self, len: uint) {
+  fn _emit_array_len(&mut self, len: uint) -> IoResult<()> {
     self._emit_len(len, (0x90_u8 | (len & 15) as u8, 16),
                         (0x00, 0),
                          0xdc,
                          0xdd)
   }
 
-  fn _emit_map_len(&mut self, len: uint) {
+  fn _emit_map_len(&mut self, len: uint) -> IoResult<()> {
     self._emit_len(len, (0x80_u8 | (len & 15) as u8, 16),
                         (0x00, 0),
                          0xde,
@@ -512,172 +597,175 @@ impl<'a> Encoder<'a> {
   }
 }
 
-impl<'a> serialize::Encoder for Encoder<'a> {
-  fn emit_nil(&mut self) { self.wr.write_u8(0xc0); }
+impl<'a> serialize::Encoder<IoError> for Encoder<'a> {
+  fn emit_nil(&mut self) -> IoResult<()> { self.wr.write_u8(0xc0) }
 
   #[inline(always)]
-  fn emit_uint(&mut self, v: uint) { self._emit_unsigned(v as u64); }
+  fn emit_uint(&mut self, v: uint) -> IoResult<()> { self._emit_unsigned(v as u64) }
   #[inline(always)]
-  fn emit_u64(&mut self, v: u64)   { self._emit_unsigned(v as u64); }
+  fn emit_u64(&mut self, v: u64) -> IoResult<()>   { self._emit_unsigned(v as u64) }
   #[inline(always)]
-  fn emit_u32(&mut self, v: u32)   { self._emit_unsigned(v as u64); }
+  fn emit_u32(&mut self, v: u32) -> IoResult<()>   { self._emit_unsigned(v as u64) }
   #[inline(always)]
-  fn emit_u16(&mut self, v: u16)   { self._emit_unsigned(v as u64); }
+  fn emit_u16(&mut self, v: u16) -> IoResult<()>   { self._emit_unsigned(v as u64) }
   #[inline(always)]
-  fn emit_u8(&mut self, v: u8)     { self._emit_unsigned(v as u64); }
+  fn emit_u8(&mut self, v: u8) -> IoResult<()>     { self._emit_unsigned(v as u64) }
 
   #[inline(always)]
-  fn emit_int(&mut self, v: int) { self._emit_signed(v as i64); }
+  fn emit_int(&mut self, v: int) -> IoResult<()>  { self._emit_signed(v as i64) }
   #[inline(always)]
-  fn emit_i64(&mut self, v: i64) { self._emit_signed(v as i64); }
+  fn emit_i64(&mut self, v: i64) -> IoResult<()>  { self._emit_signed(v as i64) }
   #[inline(always)]
-  fn emit_i32(&mut self, v: i32) { self._emit_signed(v as i64); }
+  fn emit_i32(&mut self, v: i32) -> IoResult<()>  { self._emit_signed(v as i64) }
   #[inline(always)]
-  fn emit_i16(&mut self, v: i16) { self._emit_signed(v as i64); }
+  fn emit_i16(&mut self, v: i16) -> IoResult<()>  { self._emit_signed(v as i64) }
   #[inline(always)]
-  fn emit_i8(&mut self,  v: i8)  { self._emit_signed(v as i64); }
+  fn emit_i8(&mut self,  v: i8) -> IoResult<()>   { self._emit_signed(v as i64) }
 
-  fn emit_f64(&mut self, v: f64) {
-    self.wr.write_u8(0xcb);
-    unsafe { self.wr.write_be_u64(cast::transmute(v)); }
+  fn emit_f64(&mut self, v: f64) -> IoResult<()> {
+    try!(self.wr.write_u8(0xcb));
+    unsafe { self.wr.write_be_u64(mem::transmute(v)) }
   }
 
-  fn emit_f32(&mut self, v: f32) {
-    self.wr.write_u8(0xca);
-    unsafe { self.wr.write_be_u32(cast::transmute(v)); }
+  fn emit_f32(&mut self, v: f32) -> IoResult<()> {
+    try!(self.wr.write_u8(0xca));
+    unsafe { self.wr.write_be_u32(mem::transmute(v)) }
   }
 
-  fn emit_bool(&mut self, v: bool) {
+  fn emit_bool(&mut self, v: bool) -> IoResult<()> {
     if v {
-      self.wr.write_u8(0xc3);
+      self.wr.write_u8(0xc3)
     } else {
-      self.wr.write_u8(0xc2);
+      self.wr.write_u8(0xc2)
     }
   }
 
-  fn emit_char(&mut self, v: char) {
-    self.emit_str(str::from_char(v));
+  fn emit_char(&mut self, v: char)  -> IoResult<()> {
+    let s = str::from_char(v); // XXX
+    self.emit_str(s.as_slice())
   }
 
-  fn emit_str(&mut self, v: &str) {
-    self._emit_str_len(v.len());
-    self.wr.write(v.as_bytes());
+  fn emit_str(&mut self, v: &str) -> IoResult<()> {
+    try!(self._emit_str_len(v.len()));
+    self.wr.write(v.as_bytes())
   }
 
-  fn emit_enum(&mut self, _name: &str, _f: |&mut Encoder<'a>|) {
-    fail!("Enum not supported");
+  fn emit_enum(&mut self, _name: &str, _f: |&mut Encoder<'a>| -> IoResult<()>) -> IoResult<()> {
+    Err(_invalid_input("Enum not supported")) // XXX
   }
 
-  fn emit_enum_variant(&mut self, _name: &str, _id: uint, _cnt: uint, _f: |&mut Encoder<'a>|) {
-    fail!("Enum not supported");
+  fn emit_enum_variant(&mut self, _name: &str, _id: uint, _cnt: uint, _f: |&mut Encoder<'a>| -> IoResult<()>) -> IoResult<()> {
+    Err(_invalid_input("Enum not supported")) // XXX
   }
 
-  fn emit_enum_variant_arg(&mut self, _idx: uint, _f: |&mut Encoder<'a>|) {
-    fail!("Enum not supported");
+  fn emit_enum_variant_arg(&mut self, _idx: uint, _f: |&mut Encoder<'a>| -> IoResult<()>) -> IoResult<()> {
+    Err(_invalid_input("Enum not supported")) // XXX
   }
 
-  fn emit_enum_struct_variant(&mut self, name: &str, id: uint, cnt: uint, f: |&mut Encoder<'a>|) {
-    self.emit_enum_variant(name, id, cnt, f);
+  fn emit_enum_struct_variant(&mut self, name: &str, id: uint, cnt: uint, f: |&mut Encoder<'a>| -> IoResult<()>) -> IoResult<()> {
+    self.emit_enum_variant(name, id, cnt, f)
   }
 
-  fn emit_enum_struct_variant_field(&mut self, _name: &str, idx: uint, f: |&mut Encoder<'a>|) {
-    self.emit_enum_variant_arg(idx, f);
+  fn emit_enum_struct_variant_field(&mut self, _name: &str, idx: uint, f: |&mut Encoder<'a>| -> IoResult<()>)  -> IoResult<()> {
+    self.emit_enum_variant_arg(idx, f)
   }
 
   // TODO: Option, to enable different ways to write out structs
   //       For example, to emit structs as maps/vectors.
   // XXX: Correct to use _emit_map_len here?
-  fn emit_struct(&mut self, _name: &str, len: uint, f: |&mut Encoder<'a>|) {
-    self._emit_map_len(len);
-    f(self);
+  fn emit_struct(&mut self, _name: &str, len: uint, f: |&mut Encoder<'a>| -> IoResult<()>)  -> IoResult<()> {
+    try!(self._emit_map_len(len));
+    f(self)
   }
 
-  fn emit_struct_field(&mut self, _name: &str, _idx: uint, f: |&mut Encoder<'a>|) {
-    f(self);
+  fn emit_struct_field(&mut self, _name: &str, _idx: uint, f: |&mut Encoder<'a>| -> IoResult<()>)  -> IoResult<()> {
+    f(self)
   }
 
-  fn emit_tuple(&mut self, len: uint, f: |&mut Encoder<'a>|) {
-    self.emit_seq(len, f);
+  fn emit_tuple(&mut self, len: uint, f: |&mut Encoder<'a>| -> IoResult<()>) -> IoResult<()> {
+    self.emit_seq(len, f)
   }
 
-  fn emit_tuple_arg(&mut self, idx: uint, f: |&mut Encoder<'a>|) {
-    self.emit_seq_elt(idx, f);
+  fn emit_tuple_arg(&mut self, idx: uint, f: |&mut Encoder<'a>| -> IoResult<()>) -> IoResult<()> {
+    self.emit_seq_elt(idx, f)
   }
 
   fn emit_tuple_struct(&mut self,
                        _name: &str,
                        len: uint,
-                       f: |&mut Encoder<'a>|) {
-    self.emit_seq(len, f);
+                       f: |&mut Encoder<'a>| -> IoResult<()>) -> IoResult<()> {
+    self.emit_seq(len, f)
   }
 
-  fn emit_tuple_struct_arg(&mut self, idx: uint, f: |&mut Encoder<'a>|) {
-    self.emit_seq_elt(idx, f);
+  fn emit_tuple_struct_arg(&mut self, idx: uint, f: |&mut Encoder<'a>| -> IoResult<()>) -> IoResult<()> {
+    self.emit_seq_elt(idx, f)
   }
 
-  fn emit_option(&mut self, f: |&mut Encoder<'a>|) { f(self); }
-  fn emit_option_none(&mut self) { self.emit_nil(); }
-  fn emit_option_some(&mut self, f: |&mut Encoder<'a>|) { f(self); }
+  fn emit_option(&mut self, f: |&mut Encoder<'a>| -> IoResult<()>) -> IoResult<()> { f(self) }
+  fn emit_option_none(&mut self) -> IoResult<()>  { self.emit_nil() }
+  fn emit_option_some(&mut self, f: |&mut Encoder<'a>| -> IoResult<()>) -> IoResult<()> { f(self) }
 
-  fn emit_seq(&mut self, len: uint, f: |&mut Encoder<'a>|) {
-    self._emit_array_len(len);
-    f(self);
+  fn emit_seq(&mut self, len: uint, f: |&mut Encoder<'a>| -> IoResult<()>) -> IoResult<()> {
+    try!(self._emit_array_len(len));
+    f(self)
   }
 
-  fn emit_seq_elt(&mut self, _idx: uint, f: |&mut Encoder<'a>|) {
-    f(self);
+  fn emit_seq_elt(&mut self, _idx: uint, f: |&mut Encoder<'a>| -> IoResult<()>) -> IoResult<()> {
+    f(self)
   }
 
-  fn emit_map(&mut self, len: uint, f: |&mut Encoder<'a>|) {
-    self._emit_map_len(len);
-    f(self);
+  fn emit_map(&mut self, len: uint, f: |&mut Encoder<'a>| -> IoResult<()>) -> IoResult<()> {
+    try!(self._emit_map_len(len));
+    f(self)
   }
 
-  fn emit_map_elt_key(&mut self, _idx: uint, f: |&mut Encoder<'a>|) {
-    f(self);
+  fn emit_map_elt_key(&mut self, _idx: uint, f: |&mut Encoder<'a>| -> IoResult<()>) -> IoResult<()> {
+    f(self)
   }
 
-  fn emit_map_elt_val(&mut self, _idx: uint, f: |&mut Encoder<'a>|) {
-    f(self);
+  fn emit_map_elt_val(&mut self, _idx: uint, f: |&mut Encoder<'a>| -> IoResult<()>) -> IoResult<()> {
+    f(self)
   }
 }
 
-impl<'a> serialize::Encodable<Encoder<'a>> for Value {
-  fn encode(&self, s: &mut Encoder<'a>) {
+impl<'a> serialize::Encodable<Encoder<'a>, IoError> for Value {
+  fn encode(&self, s: &mut Encoder<'a>) -> IoResult<()> {
     match *self {
-      Nil => (s as &mut serialize::Encoder).emit_nil(),
-      Boolean(b) => (s as &mut serialize::Encoder).emit_bool(b),
-      Integer(i) => (s as &mut serialize::Encoder).emit_i64(i),
-      Unsigned(u) => (s as &mut serialize::Encoder).emit_u64(u),
-      Float(f) => (s as &mut serialize::Encoder).emit_f32(f),
-      Double(d) => (s as &mut serialize::Encoder).emit_f64(d),
+      Nil => (s as &mut serialize::Encoder<IoError>).emit_nil(),
+      Boolean(b) => (s as &mut serialize::Encoder<IoError>).emit_bool(b),
+      Integer(i) => (s as &mut serialize::Encoder<IoError>).emit_i64(i),
+      Unsigned(u) => (s as &mut serialize::Encoder<IoError>).emit_u64(u),
+      Float(f) => (s as &mut serialize::Encoder<IoError>).emit_f32(f),
+      Double(d) => (s as &mut serialize::Encoder<IoError>).emit_f64(d),
       Array(ref ary) => {
-        s._emit_array_len(ary.len());
-        for elt in ary.iter() { elt.encode(s); }
+        try!(s._emit_array_len(ary.len()));
+        for elt in ary.iter() { try!(elt.encode(s)); }
+        Ok(())
       }
       Map(ref map) => {
-        s._emit_map_len(map.len());
+        try!(s._emit_map_len(map.len()));
         for &(ref key, ref val) in map.iter() {
-          key.encode(s);
-          val.encode(s);
+          try!(key.encode(s));
+          try!(val.encode(s));
         }
+        Ok(())
       }
-      String(ref str) => (s as &mut serialize::Encoder).emit_str(from_utf8(str.as_slice()).unwrap()),
-      Binary(_) => fail!(),
-      Extended(_, _) => fail!()
+      Str(ref str) => (s as &mut serialize::Encoder<IoError>).emit_str(from_utf8(str.as_slice()).unwrap()), // XXX
+      Binary(_) => fail!(), // XXX
+      Extended(_, _) => fail!() // XXX
     }
   }
 }
 
 
-pub fn to_msgpack<'a, T: Encodable<Encoder<'a>>>(t: &T) -> ~[u8] {
+pub fn to_msgpack<'a, T: Encodable<Encoder<'a>, IoError>>(t: &T) -> IoResult<Vec<u8>> {
   let mut wr = MemWriter::new();
   let mut encoder = Encoder::new(&mut wr);
-  t.encode(&mut encoder);
-  wr.unwrap()
+  try!(t.encode(&mut encoder));
+  Ok(wr.unwrap())
 }
 
-pub fn from_msgpack<'a, T: Decodable<Decoder<'a>>>(bytes: ~[u8]) -> T {
+pub fn from_msgpack<'a, T: Decodable<Decoder<'a>, IoError>>(bytes: Vec<u8>) -> IoResult<T> {
   let mut rd = MemReader::new(bytes);
   let mut decoder = Decoder::new(&mut rd);
   Decodable::decode(&mut decoder)
