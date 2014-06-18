@@ -1,6 +1,6 @@
 #![feature(phase)]
 
-#[phase(syntax, link)] extern crate log;
+#[phase(plugin, link)] extern crate log;
 extern crate msgpack = "msgpack#0.1";
 
 use std::io::{File};
