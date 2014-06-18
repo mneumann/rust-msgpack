@@ -11,15 +11,15 @@
 ## Quickstart
 
 ```rust
-extern mod msgpack = "msgpack#0.1";
+extern crate msgpack = "msgpack#0.1";
 
 fn main() {
-  let arr = ~[~"str1", ~"str2"];
-  let str = msgpack::to_msgpack(&arr);
-  println!("Encoded: {:?}", str);
+  let arr = vec!["str1".to_str(), "str2".to_str()];
+  let str = msgpack::to_msgpack(&arr).ok().unwrap();
+  println!("Encoded: {}", str);
 
-  let dec: ~[~str] = msgpack::from_msgpack(str);
-  println!("Decoded: {:?}", dec);
+  let dec: Vec<String> = msgpack::from_msgpack(str).ok().unwrap();
+  println!("Decoded: {}", dec);
 }
 ```
 
@@ -28,12 +28,12 @@ msgpack, derive from <code>Encodable</code> and <code>Decodable</code> as shown
 in the following example:
 
 ```rust
-extern mod serialize;
+extern crate serialize;
 
 #[deriving(Encodable,Decodable)]
 struct MyStruct {
-  a: ~[u32],
-  s: ~str
+  a: Vec<u32>,
+  s: String
 }
 ```
 
