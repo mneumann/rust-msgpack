@@ -1,17 +1,39 @@
-build:
-	mkdir -p lib bin
-	rustc --out-dir lib -O src/msgpack/lib.rs
-	rustc -L lib -o bin/simple src/examples/simple/main.rs
-	rustc -L lib -o bin/value -O src/examples/value/main.rs
+.PHONY: lib all examples display test clean
 
-test: build
-	rustc -L lib -o bin/test --test src/msgpack/test.rs
-	./bin/test
+RUSTC?=rustc
+
+LIBNAME := $(shell ${RUSTC} --crate-file-name src/msgpack/lib.rs)
+
+all: lib examples test
+
+lib: lib/$(LIBNAME)
+
+lib/$(LIBNAME): src/msgpack/lib.rs src/msgpack/rpc.rs
+	@mkdir -p lib
+	${RUSTC} -O --out-dir lib $<
+
+test: bin/msgpack-test
+	./bin/msgpack-test
+
+bin/msgpack-test: src/msgpack/test.rs lib/$(LIBNAME)
+	@mkdir -p bin
+	${RUSTC} --test -O -o bin/msgpack-test -L lib $<
+
+examples: bin/simple bin/value
+
+bin/simple: src/examples/simple/main.rs lib/$(LIBNAME)
+	@mkdir -p bin
+	${RUSTC} -o bin/simple -L lib $<
+
+bin/value: src/examples/value/main.rs lib/$(LIBNAME)
+	@mkdir -p bin
+	${RUSTC} -o bin/value -L lib $<
 
 clean:
-	rm -rf lib bin
+	-$(RM) -r bin
+	-$(RM) -r lib
 
-display:
+display: bin/value
 	ruby -rmsgpack -e "p File.read(ARGV.shift)" test.msgpack
 	ruby -rmsgpack -e "p MessagePack.load(File.read(ARGV.shift))" test.msgpack
 	./bin/value test.msgpack
