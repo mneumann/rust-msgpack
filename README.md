@@ -8,10 +8,20 @@
 [msgpack-home]: http://www.msgpack.org
 [rust-home]: http://www.rust-lang.org
 
+## Installation
+
+Simply include the rust-msgpack in your Cargo dependencies.
+
+```toml
+[dependencies.msgpack]
+
+git = "git@github.com:mneumann/rust-msgpack.git"
+```
+
 ## Quickstart
 
 ```rust
-extern crate msgpack = "msgpack#0.1";
+extern crate msgpack;
 
 fn main() {
   let arr = vec!["str1".to_str(), "str2".to_str()];
@@ -35,6 +45,12 @@ struct MyStruct {
   a: Vec<u32>,
   s: String
 }
+```
+
+## Testing
+
+```
+cargo test
 ```
 
 ## License

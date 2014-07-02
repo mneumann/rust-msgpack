@@ -1,4 +1,5 @@
 .rust/
+target
 bin/
 build/
 lib/
