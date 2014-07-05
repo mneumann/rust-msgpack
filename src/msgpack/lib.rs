@@ -365,7 +365,7 @@ impl<'a> serialize::Decoder<IoError> for Decoder<'a> {
     fn read_char(&mut self) -> IoResult<char> {
         let s = try!(self.read_str());
         if s.len() != 1 { return Err(_invalid_input("invalid char")) }
-        Ok(s.as_slice()[0] as char)
+        Ok(s.as_slice().chars().next().unwrap())
     }
 
     #[inline(always)]
