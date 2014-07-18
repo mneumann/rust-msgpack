@@ -1,0 +1,18 @@
+[project]
+
+name = "msgpack"
+version = "0.0.1"
+authors = [
+    "Michael Neumann",
+    "Jason E. Aten",
+    "Piotr Zolnierek",
+    "Erick Tryzelaar",
+    "OGINO Masanori",
+    "Ian Daniher",
+    "Derek Chiang (Enchi Jiang)"
+]
+
+[[lib]]
+
+name = "msgpack"
+path = "src/msgpack/lib.rs"
