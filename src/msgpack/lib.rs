@@ -1,4 +1,3 @@
-#![crate_id = "msgpack#0.1"]
 #![comment = "msgpack.org implementation for Rust"]
 #![license = "MIT/ASL2"]
 #![crate_type = "lib"]
@@ -7,9 +6,9 @@
 
 extern crate serialize;
 
-use std::{io, str};
-use std::str::from_utf8;
+use std::io;
 use std::io::{MemReader, MemWriter, IoResult, IoError, InvalidInput};
+use std::str::from_utf8;
 use std::mem;
 
 use serialize::{Encodable, Decodable};
@@ -120,7 +119,7 @@ impl<'a> Decoder<'a> {
     }
 
     fn _read_str(&mut self, len: uint) -> IoResult<String> {
-        match str::from_utf8_owned(try!(self.rd.read_exact(len))) {
+        match String::from_utf8(try!(self.rd.read_exact(len))) {
             Ok(s)  => Ok(s),
             Err(_) => Err(_invalid_input("No UTF-8 string"))
         }
@@ -650,7 +649,7 @@ impl<'a> serialize::Encoder<IoError> for Encoder<'a> {
     }
 
     fn emit_char(&mut self, v: char)  -> IoResult<()> {
-        let s = str::from_char(v); // XXX
+        let s = String::from_char(1, v); // XXX
         self.emit_str(s.as_slice())
     }
 
@@ -788,9 +787,9 @@ mod test {
 
     #[test]
     fn test_circular_str() {
-      assert_msgpack_circular!("".to_str());
-      assert_msgpack_circular!("a".to_str());
-      assert_msgpack_circular!("abcdef".to_str());
+      assert_msgpack_circular!("".to_string());
+      assert_msgpack_circular!("a".to_string());
+      assert_msgpack_circular!("abcdef".to_string());
     }
 
     #[test]
@@ -852,8 +851,8 @@ mod test {
       c.insert(1u32, 2u32);
       c.insert(2u32, 3u32);
 
-      let s1 = S { f: 1u8, g: 2u16, i: "foo".to_str(), a: vec![], c: c.clone() };
-      let s2 = S { f: 5u8, g: 1u16, i: "bar".to_str(), a: vec![1u32,2u32,3u32], c: c.clone() };
+      let s1 = S { f: 1u8, g: 2u16, i: "foo".to_string(), a: vec![], c: c.clone() };
+      let s2 = S { f: 5u8, g: 1u16, i: "bar".to_string(), a: vec![1u32,2u32,3u32], c: c.clone() };
       let s = vec![s1, s2];
 
       assert_msgpack_circular!(s);
