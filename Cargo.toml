@@ -11,8 +11,3 @@ authors = [
     "Ian Daniher",
     "Derek Chiang (Enchi Jiang)"
 ]
-
-[[lib]]
-
-name = "msgpack"
-path = "src/msgpack/lib.rs"
