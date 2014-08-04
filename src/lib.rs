@@ -474,6 +474,10 @@ impl<'a> serialize::Decoder<IoError> for Decoder<'a> {
         -> IoResult<T> {
             self.read_tuple_arg(idx, f)
         }
+
+    fn error(&mut self, _err: &str) -> IoError {
+        IoError {kind: InvalidInput, desc: "ApplicationError", detail: None}
+    }
 }
 
 impl<'a> serialize::Decodable<Decoder<'a>, IoError> for Value {
