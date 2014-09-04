@@ -489,7 +489,7 @@ impl<'a> serialize::Decodable<Decoder<'a>, IoError> for Value {
 
 /// A structure for implementing serialization to Msgpack.
 pub struct Encoder<'a> {
-    wr: &'a mut io::Writer
+    wr: &'a mut io::Writer + 'a
 }
 
 impl<'a> Encoder<'a> {
