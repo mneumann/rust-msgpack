@@ -104,7 +104,7 @@ impl<'a> Decoder<'a> {
 
     fn _read_signed(&mut self) -> IoResult<i64> {
         let c = try!(self._read_byte());
-        match c { 
+        match c {
             0xd0         => Ok(try!(self.rd.read_i8()) as i64),
             0xd1         => Ok(try!(self.rd.read_be_i16()) as i64),
             0xd2         => Ok(try!(self.rd.read_be_i32()) as i64),
@@ -166,7 +166,7 @@ impl<'a> Decoder<'a> {
 
     fn decode_ext(&mut self, len: uint) -> IoResult<Value> {
         let typ = try!(self.rd.read_i8());
-        if typ < 0 { 
+        if typ < 0 {
             return Err(_invalid_input("Reserved type"));
         }
         Ok(Extended(typ, try!(self.rd.read_exact(len))))
@@ -372,6 +372,10 @@ impl<'a> serialize::Decoder<IoError> for Decoder<'a> {
         let c = try!(self._read_byte());
         match c {
             0xa0 .. 0xbf => self._read_str((c as uint) & 0x1F),
+            0xd9         => {
+                let l = try!(self.rd.read_u8()) as uint;
+                self._read_str(l)
+            },
             0xda         => {
                 let l = try!(self.rd.read_be_u16()) as uint;
                 self._read_str(l)
@@ -861,5 +865,12 @@ mod test {
 
       assert_msgpack_circular!(s);
     }
-    
+
+    #[test]
+    fn test_circular_str_lengths() {
+        assert_msgpack_circular!(String::from_char(4, 'a'));
+        assert_msgpack_circular!(String::from_char(32, 'a'));
+        assert_msgpack_circular!(String::from_char(256, 'a'));
+        assert_msgpack_circular!(String::from_char(0x10000, 'a'));
+    }
 }
