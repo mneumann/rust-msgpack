@@ -1,4 +1,5 @@
 .rust/
+Cargo.lock
 target
 bin/
 build/
