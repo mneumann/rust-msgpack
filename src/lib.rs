@@ -93,7 +93,7 @@ impl<'a> Decoder<'a> {
     fn _read_unsigned(&mut self) -> IoResult<u64> {
         let c = try!(self._read_byte());
         match c {
-            0x00 .. 0x7f => Ok(c as u64),
+            0x00 ... 0x7f => Ok(c as u64),
             0xcc         => Ok(try!(self.rd.read_u8()) as u64),
             0xcd         => Ok(try!(self.rd.read_be_u16()) as u64),
             0xce         => Ok(try!(self.rd.read_be_u32()) as u64),
@@ -109,7 +109,7 @@ impl<'a> Decoder<'a> {
             0xd1         => Ok(try!(self.rd.read_be_i16()) as i64),
             0xd2         => Ok(try!(self.rd.read_be_i32()) as i64),
             0xd3         => self.rd.read_be_i64(),
-            0xe0 .. 0xff => Ok((c as i8) as i64),
+            0xe0 ... 0xff => Ok((c as i8) as i64),
             _            => Err(_invalid_input("No signed integer"))
         }
     }
@@ -129,7 +129,7 @@ impl<'a> Decoder<'a> {
         let c = try!(self._read_byte());
 
         match c {
-            0x90 .. 0x9f => Ok((c as uint) & 0x0F),
+            0x90 ... 0x9f => Ok((c as uint) & 0x0F),
             0xdc         => self.rd.read_be_u16().map(|i| i as uint),
             0xdd         => self.rd.read_be_u32().map(|i| i as uint),
             _            => Err(_invalid_input("Invalid byte code in _read_vec_len"))
@@ -139,7 +139,7 @@ impl<'a> Decoder<'a> {
     fn _read_map_len(&mut self) -> IoResult<uint> {
         let c = try!(self._read_byte());
         match c {
-            0x80 .. 0x8f => Ok((c as uint) & 0x0F),
+            0x80 ... 0x8f => Ok((c as uint) & 0x0F),
             0xde         => self.rd.read_be_u16().map(|i| i as uint),
             0xdf         => self.rd.read_be_u32().map(|i| i as uint),
             _            => Err(_invalid_input("Invalid byte code in _read_map_len"))
@@ -182,7 +182,7 @@ impl<'a> Decoder<'a> {
             0xc2         => Ok(Boolean(false)),
             0xc3         => Ok(Boolean(true)),
 
-            0x00 .. 0x7f => Ok(Unsigned(c as u64)),
+            0x00 ... 0x7f => Ok(Unsigned(c as u64)),
             0xcc         => self.rd.read_u8().map(|i| Unsigned(i as u64)),
             0xcd         => self.rd.read_be_u16().map(|i| Unsigned(i as u64)),
             0xce         => self.rd.read_be_u32().map(|i| Unsigned(i as u64)),
@@ -192,12 +192,12 @@ impl<'a> Decoder<'a> {
             0xd1         => self.rd.read_be_i16().map(|i| Integer(i as i64)),
             0xd2         => self.rd.read_be_i32().map(|i| Integer(i as i64)),
             0xd3         => self.rd.read_be_i64().map(|i| Integer(i)),
-            0xe0 .. 0xff => Ok(Integer((c as i8) as i64)),
+            0xe0 ... 0xff => Ok(Integer((c as i8) as i64)),
 
             0xca         => read_float(&mut self.rd).map(|i| Float(i)),
             0xcb         => read_double(&mut self.rd).map(|i| Double(i)),
 
-            0xa0 .. 0xbf => self._read_raw((c as uint) & 0x1F).map(|i| Str(i)),
+            0xa0 ... 0xbf => self._read_raw((c as uint) & 0x1F).map(|i| Str(i)),
             0xd9         => {
                 let l = try!(self.rd.read_u8()) as uint;
                 self._read_raw(l).map(|i| Str(i))
@@ -227,11 +227,11 @@ impl<'a> Decoder<'a> {
                 self._read_raw(l).map(|i| Binary(i))
             }
 
-            0x90 .. 0x9f => self.decode_array((c as uint) & 0x0F),
+            0x90 ... 0x9f => self.decode_array((c as uint) & 0x0F),
             0xdc         => { let l = try!(self.rd.read_be_u16()) as uint; self.decode_array(l) },
             0xdd         => { let l = try!(self.rd.read_be_u32()) as uint; self.decode_array(l) },
 
-            0x80 .. 0x8f => self.decode_map((c as uint) & 0x0F),
+            0x80 ... 0x8f => self.decode_map((c as uint) & 0x0F),
             0xde         => { let l = try!(self.rd.read_be_u16()) as uint; self.decode_map(l) },
             0xdf         => { let l = try!(self.rd.read_be_u32()) as uint; self.decode_map(l) },
 
@@ -371,7 +371,7 @@ impl<'a> serialize::Decoder<IoError> for Decoder<'a> {
     fn read_str(&mut self) -> IoResult<String> {
         let c = try!(self._read_byte());
         match c {
-            0xa0 .. 0xbf => self._read_str((c as uint) & 0x1F),
+            0xa0 ... 0xbf => self._read_str((c as uint) & 0x1F),
             0xd9         => {
                 let l = try!(self.rd.read_u8()) as uint;
                 self._read_str(l)
