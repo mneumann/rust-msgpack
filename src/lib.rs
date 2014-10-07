@@ -517,15 +517,15 @@ impl<'a> Encoder<'a> {
         if v <= 127 {
             try!(self.wr.write_u8(v as u8));
         }
-        else if v <= 0xFF {
+        else if v <= std::u8::MAX as u64 {
             try!(self.wr.write_u8(0xcc));
             try!(self.wr.write_u8(v as u8));
         }
-        else if v <= 0xFFFF {
+        else if v <= std::u16::MAX as u64 {
             try!(self.wr.write_u8(0xcd));
             try!(self.wr.write_be_u16(v as u16));
         }
-        else if v <= 0xFFFF_FFFF {
+        else if v <= std::u32::MAX as u64 {
             try!(self.wr.write_u8(0xce));
             try!(self.wr.write_be_u32(v as u32));
         }
@@ -539,19 +539,19 @@ impl<'a> Encoder<'a> {
 
     /// Emits the most efficient representation of the given signed integer
     fn _emit_signed(&mut self, v: i64) -> IoResult<()> {
-        if v >= -(1i64<<7) && v < (1i64<<7) {
+        if v >= std::i8::MIN as i64 && v <= std::i8::MAX as i64 {
             let v = v as i8;
             if (v as u8) & 0xe0 != 0xe0 {
                 try!(self.wr.write_u8(0xd0));
             }
             try!(self.wr.write_u8(v as u8));
         }
-        else if v >= -(1i64<<15) && v < (1i64<<15) {
+        else if v >= std::i16::MIN as i64 && v <= std::i16::MAX as i64 {
             let v = v as i16;
             try!(self.wr.write_u8(0xd1));
             try!(self.wr.write_be_i16(v));
         }
-        else if v >= -(1i64<<31) && v < (1i64<<31) {
+        else if v >= std::i32::MIN as i64 && v <= std::i32::MAX as i64 {
             let v = v as i32;
             try!(self.wr.write_u8(0xd2));
             try!(self.wr.write_be_i32(v));
@@ -571,11 +571,11 @@ impl<'a> Encoder<'a> {
         } else if len < sz2 {
             try!(self.wr.write_u8(op2));
             try!(self.wr.write_u8(len as u8));
-        } else if len <= 0xFFFF {
+        } else if len <= std::u16::MAX as uint {
             try!(self.wr.write_u8(op3));
             try!(self.wr.write_be_u16(len as u16));
         } else {
-            assert!(len <= 0xFFFF_FFFF); // XXX
+            assert!(len <= std::u32::MAX as uint); // XXX
             try!(self.wr.write_u8(op4));
             try!(self.wr.write_be_u32(len as u32));
         }
