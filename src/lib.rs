@@ -746,13 +746,15 @@ impl<'a> serialize::Encoder<IoError> for Encoder<'a> {
 
 impl<'a> serialize::Encodable<Encoder<'a>, IoError> for Value {
     fn encode(&self, s: &mut Encoder<'a>) -> IoResult<()> {
+        use serialize::Encoder;
+
         match *self {
-            Nil => (s as &mut serialize::Encoder<IoError>).emit_nil(),
-            Boolean(b) => (s as &mut serialize::Encoder<IoError>).emit_bool(b),
-            Integer(i) => (s as &mut serialize::Encoder<IoError>).emit_i64(i),
-            Unsigned(u) => (s as &mut serialize::Encoder<IoError>).emit_u64(u),
-            Float(f) => (s as &mut serialize::Encoder<IoError>).emit_f32(f),
-            Double(d) => (s as &mut serialize::Encoder<IoError>).emit_f64(d),
+            Nil => s.emit_nil(),
+            Boolean(b) => s.emit_bool(b),
+            Integer(i) => s.emit_i64(i),
+            Unsigned(u) => s.emit_u64(u),
+            Float(f) => s.emit_f32(f),
+            Double(d) => s.emit_f64(d),
             Array(ref ary) => {
                 try!(s._emit_array_len(ary.len()));
                 for elt in ary.iter() { try!(elt.encode(s)); }
@@ -766,9 +768,9 @@ impl<'a> serialize::Encodable<Encoder<'a>, IoError> for Value {
                 }
                 Ok(())
             }
-            Str(ref str) => (s as &mut serialize::Encoder<IoError>).emit_str(from_utf8(str.as_slice()).unwrap()), // XXX
-                Binary(_) => fail!(), // XXX
-                Extended(_, _) => fail!() // XXX
+            Str(ref str) => s.emit_str(from_utf8(str.as_slice()).unwrap()), // XXX
+            Binary(_) => panic!(), // XXX
+            Extended(_, _) => panic!() // XXX
         }
     }
 }
