@@ -457,8 +457,14 @@ impl<'a> serialize::Decoder<IoError> for Decoder<'a> {
             self.read_enum_variant_arg(idx, f)
         }
 
-    fn read_tuple<T>(&mut self, f: |&mut Decoder<'a>, uint| -> IoResult<T>) -> IoResult<T> {
-        self.read_seq(f)
+    fn read_tuple<T>(&mut self, tuple_len: uint, f: |&mut Decoder<'a>| -> IoResult<T>) -> IoResult<T> {
+        self.read_seq(|d, len| {
+            if len == tuple_len {
+                f(d)
+            } else {
+                Err(d.error("received incorrect tuple length"))
+            }
+        })
     }
 
     fn read_tuple_arg<T>(&mut self, idx: uint, f: |&mut Decoder<'a>| -> IoResult<T>) -> IoResult<T> {
@@ -467,9 +473,10 @@ impl<'a> serialize::Decoder<IoError> for Decoder<'a> {
 
     fn read_tuple_struct<T>(&mut self,
                             _name: &str,
-                            f: |&mut Decoder<'a>, uint| -> IoResult<T>)
+                            len: uint,
+                            f: |&mut Decoder<'a>| -> IoResult<T>)
         -> IoResult<T> {
-            self.read_tuple(f)
+            self.read_tuple(len, f)
         }
 
     fn read_tuple_struct_arg<T>(&mut self,
@@ -784,7 +791,7 @@ pub fn from_msgpack<'a, T: Decodable<Decoder<'a>, IoError>>(bytes: Vec<u8>) -> I
 
 #[cfg(test)]
 mod test {
-    use std::collections::hashmap::HashMap;
+    use std::collections::HashMap;
     use super::{Encoder, from_msgpack};
     use serialize::Encodable;
 
