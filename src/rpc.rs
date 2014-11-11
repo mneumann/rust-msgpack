@@ -25,8 +25,8 @@ impl<'a> serialize::Encodable<Encoder<'a>, IoError> for RpcMessage {
   }
 }
 
-impl<'a> serialize::Decodable<Decoder<'a>, IoError> for RpcMessage {
-  fn decode(s: &mut Decoder<'a>) -> IoResult<RpcMessage> {
+impl<R: Reader> serialize::Decodable<Decoder<R>, IoError> for RpcMessage {
+  fn decode(s: &mut Decoder<R>) -> IoResult<RpcMessage> {
     let len = try!(s._read_vec_len());
     let ty: uint = try!(Decodable::decode(s));
 

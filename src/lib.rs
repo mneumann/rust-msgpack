@@ -7,7 +7,7 @@
 extern crate serialize;
 
 use std::io;
-use std::io::{MemReader, MemWriter, IoResult, IoError, InvalidInput};
+use std::io::{BufReader, MemWriter, IoResult, IoError, InvalidInput};
 use std::str::from_utf8;
 use std::mem;
 
@@ -45,23 +45,23 @@ pub fn _invalid_input(s: &'static str) -> IoError {
 }
 
 /// A structure to decode Msgpack from a reader.
-pub struct Decoder<'a> {
-    rd: io::MemReader,
+pub struct Decoder<R: Reader> {
+    rd: R,
     next_byte: Option<u8>
 }
 
-impl<'a> Decoder<'a> {
+impl<R: Reader> Decoder<R> {
     /// Creates a new Msgpack decoder for decoding from the
     /// specified reader.
-    pub fn new(bytes: Vec<u8>) -> Decoder<'a> {
+    pub fn new(rd: R) -> Decoder<R> {
         Decoder {
-            rd: io::MemReader::new(bytes),
+            rd: rd,
             next_byte: None
         }
     }
 }
 
-impl<'a> Decoder<'a> {
+impl<'a, R: Reader> Decoder<R> {
     fn _peek_byte(&mut self) -> IoResult<u8> {
         match self.next_byte {
             Some(byte) => Ok(byte),
@@ -252,7 +252,7 @@ impl<'a> Decoder<'a> {
 
 }
 
-impl<'a> serialize::Decoder<IoError> for Decoder<'a> {
+impl<'a, R: Reader> serialize::Decoder<IoError> for Decoder<R> {
     #[inline(always)]
     fn read_nil(&mut self) -> IoResult<()> {
         match self._read_byte() {
@@ -388,30 +388,30 @@ impl<'a> serialize::Decoder<IoError> for Decoder<'a> {
         }
     }
 
-    fn read_enum<T>(&mut self, _name: &str, _f: |&mut Decoder<'a>| -> IoResult<T>) -> IoResult<T> {
+    fn read_enum<T>(&mut self, _name: &str, _f: |&mut Decoder<R>| -> IoResult<T>) -> IoResult<T> {
         // XXX
         Err(_invalid_input("read_enum not supported by rust-msgpack"))
     }
-    fn read_enum_variant<T>(&mut self, _names: &[&str], _f: |&mut Decoder<'a>, uint| -> IoResult<T>) -> IoResult<T> {
+    fn read_enum_variant<T>(&mut self, _names: &[&str], _f: |&mut Decoder<R>, uint| -> IoResult<T>) -> IoResult<T> {
         Err(_invalid_input("read_enum_variant not supported by rust-msgpack"))
     }
-    fn read_enum_variant_arg<T>(&mut self, _idx: uint, _f: |&mut Decoder<'a>| -> IoResult<T>) -> IoResult<T> {
+    fn read_enum_variant_arg<T>(&mut self, _idx: uint, _f: |&mut Decoder<R>| -> IoResult<T>) -> IoResult<T> {
         Err(_invalid_input("read_enum_variant_arg not supported by rust-msgpack"))
     }
 
     #[inline(always)]
-    fn read_seq<T>(&mut self, f: |&mut Decoder<'a>, uint| -> IoResult<T>) -> IoResult<T> {
+    fn read_seq<T>(&mut self, f: |&mut Decoder<R>, uint| -> IoResult<T>) -> IoResult<T> {
         let len = try!(self._read_vec_len());
         f(self, len)
     }
 
     #[inline(always)]
-    fn read_seq_elt<T>(&mut self, _idx: uint, f: |&mut Decoder<'a>| -> IoResult<T>) -> IoResult<T> {
+    fn read_seq_elt<T>(&mut self, _idx: uint, f: |&mut Decoder<R>| -> IoResult<T>) -> IoResult<T> {
         f(self)
     }
 
     #[inline(always)]
-    fn read_struct<T>(&mut self, _name: &str, len: uint, f: |&mut Decoder<'a>| -> IoResult<T>) -> IoResult<T> {
+    fn read_struct<T>(&mut self, _name: &str, len: uint, f: |&mut Decoder<R>| -> IoResult<T>) -> IoResult<T> {
         // XXX: Why are we using a map length here?
         if len != try!(self._read_map_len()) {
             Err(_invalid_input("invalid length for struct"))
@@ -421,29 +421,29 @@ impl<'a> serialize::Decoder<IoError> for Decoder<'a> {
     }
 
     #[inline(always)]
-    fn read_struct_field<T>(&mut self, _name: &str, _idx: uint, f: |&mut Decoder<'a>| -> IoResult<T>) -> IoResult<T> {
+    fn read_struct_field<T>(&mut self, _name: &str, _idx: uint, f: |&mut Decoder<R>| -> IoResult<T>) -> IoResult<T> {
         f(self)
     }
 
-    fn read_option<T>(&mut self, f: |&mut Decoder<'a>, bool| -> IoResult<T>) -> IoResult<T> {
+    fn read_option<T>(&mut self, f: |&mut Decoder<R>, bool| -> IoResult<T>) -> IoResult<T> {
         match try!(self._peek_byte()) {
             0xc0 => f(self, false),
             _    => f(self, true)
         }
     }
 
-    fn read_map<T>(&mut self, f: |&mut Decoder<'a>, uint| -> IoResult<T>) -> IoResult<T> {
+    fn read_map<T>(&mut self, f: |&mut Decoder<R>, uint| -> IoResult<T>) -> IoResult<T> {
         let len = try!(self._read_map_len());
         f(self, len)
     }
 
-    fn read_map_elt_key<T>(&mut self, _idx: uint, f: |&mut Decoder<'a>| -> IoResult<T>) -> IoResult<T> { f(self) }
-    fn read_map_elt_val<T>(&mut self, _idx: uint, f: |&mut Decoder<'a>| -> IoResult<T>) -> IoResult<T> { f(self) }
+    fn read_map_elt_key<T>(&mut self, _idx: uint, f: |&mut Decoder<R>| -> IoResult<T>) -> IoResult<T> { f(self) }
+    fn read_map_elt_val<T>(&mut self, _idx: uint, f: |&mut Decoder<R>| -> IoResult<T>) -> IoResult<T> { f(self) }
 
 
     fn read_enum_struct_variant<T>(&mut self,
                                    names: &[&str],
-                                   f: |&mut Decoder<'a>, uint| -> IoResult<T>)
+                                   f: |&mut Decoder<R>, uint| -> IoResult<T>)
         -> IoResult<T> {
             self.read_enum_variant(names, f)
         }
@@ -452,12 +452,12 @@ impl<'a> serialize::Decoder<IoError> for Decoder<'a> {
     fn read_enum_struct_variant_field<T>(&mut self,
                                          _name: &str,
                                          idx: uint,
-                                         f: |&mut Decoder<'a>| -> IoResult<T>)
+                                         f: |&mut Decoder<R>| -> IoResult<T>)
         -> IoResult<T> {
             self.read_enum_variant_arg(idx, f)
         }
 
-    fn read_tuple<T>(&mut self, tuple_len: uint, f: |&mut Decoder<'a>| -> IoResult<T>) -> IoResult<T> {
+    fn read_tuple<T>(&mut self, tuple_len: uint, f: |&mut Decoder<R>| -> IoResult<T>) -> IoResult<T> {
         self.read_seq(|d, len| {
             if len == tuple_len {
                 f(d)
@@ -467,21 +467,21 @@ impl<'a> serialize::Decoder<IoError> for Decoder<'a> {
         })
     }
 
-    fn read_tuple_arg<T>(&mut self, idx: uint, f: |&mut Decoder<'a>| -> IoResult<T>) -> IoResult<T> {
+    fn read_tuple_arg<T>(&mut self, idx: uint, f: |&mut Decoder<R>| -> IoResult<T>) -> IoResult<T> {
         self.read_seq_elt(idx, f)
     }
 
     fn read_tuple_struct<T>(&mut self,
                             _name: &str,
                             len: uint,
-                            f: |&mut Decoder<'a>| -> IoResult<T>)
+                            f: |&mut Decoder<R>| -> IoResult<T>)
         -> IoResult<T> {
             self.read_tuple(len, f)
         }
 
     fn read_tuple_struct_arg<T>(&mut self,
                                 idx: uint,
-                                f: |&mut Decoder<'a>| -> IoResult<T>)
+                                f: |&mut Decoder<R>| -> IoResult<T>)
         -> IoResult<T> {
             self.read_tuple_arg(idx, f)
         }
@@ -491,8 +491,8 @@ impl<'a> serialize::Decoder<IoError> for Decoder<'a> {
     }
 }
 
-impl<'a> serialize::Decodable<Decoder<'a>, IoError> for Value {
-    fn decode(s: &mut Decoder<'a>) -> IoResult<Value> {
+impl<R: Reader> serialize::Decodable<Decoder<R>, IoError> for Value {
+    fn decode(s: &mut Decoder<R>) -> IoResult<Value> {
         s.decode_value()
     }
 }
@@ -784,8 +784,9 @@ impl<'a> serialize::Encodable<Encoder<'a>, IoError> for Value {
 
 
 
-pub fn from_msgpack<'a, T: Decodable<Decoder<'a>, IoError>>(bytes: Vec<u8>) -> IoResult<T> {
-    let mut decoder = Decoder::new(bytes);
+pub fn from_msgpack<'a, T: Decodable<Decoder<BufReader<'a>>, IoError>>(bytes: &'a [u8]) -> IoResult<T> {
+    let rd = BufReader::new(bytes);
+    let mut decoder = Decoder::new(rd);
     Decodable::decode(&mut decoder)
 }
 
@@ -797,10 +798,13 @@ mod test {
 
     macro_rules! assert_msgpack_circular(
         ($inp:expr) => (
-            assert_eq!($inp, from_msgpack(Encoder::to_msgpack(&$inp).ok().unwrap()).ok().unwrap())
+            {
+                let bytes = Encoder::to_msgpack(&$inp).unwrap();
+                let value = from_msgpack(bytes.as_slice()).unwrap();
+                assert_eq!($inp, value)
+            }
         );
     )
-
 
     #[test]
     fn test_circular_str() {
