@@ -10,6 +10,6 @@ fn main() {
   let contents = File::open(&Path::new(args()[1].clone())).read_to_end().ok().unwrap();
   debug!("{}", contents);
 
-  let a: msgpack::Value = msgpack::from_msgpack(contents).ok().unwrap();
+  let a: msgpack::Value = msgpack::from_msgpack(contents.as_slice()).ok().unwrap();
   debug!("{}", a);
 }

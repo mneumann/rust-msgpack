@@ -7,7 +7,7 @@
 extern crate serialize;
 
 use std::io;
-use std::io::{MemReader, MemWriter, IoResult, IoError, InvalidInput};
+use std::io::{MemWriter, IoResult, IoError, InvalidInput};
 use std::str::from_utf8;
 use std::mem;
 
@@ -46,16 +46,16 @@ pub fn _invalid_input(s: &'static str) -> IoError {
 
 /// A structure to decode Msgpack from a reader.
 pub struct Decoder<'a> {
-    rd: io::MemReader,
+    rd: io::BufReader<'a>,
     next_byte: Option<u8>
 }
 
 impl<'a> Decoder<'a> {
     /// Creates a new Msgpack decoder for decoding from the
     /// specified reader.
-    pub fn new(bytes: Vec<u8>) -> Decoder<'a> {
+    pub fn new(bytes: &'a [u8]) -> Decoder<'a> {
         Decoder {
-            rd: io::MemReader::new(bytes),
+            rd: io::BufReader::new(bytes),
             next_byte: None
         }
     }
@@ -775,7 +775,7 @@ impl<'a> serialize::Encodable<Encoder<'a>, IoError> for Value {
 
 
 
-pub fn from_msgpack<'a, T: Decodable<Decoder<'a>, IoError>>(bytes: Vec<u8>) -> IoResult<T> {
+pub fn from_msgpack<'a, T: Decodable<Decoder<'a>, IoError>>(bytes: &'a [u8]) -> IoResult<T> {
     let mut decoder = Decoder::new(bytes);
     Decodable::decode(&mut decoder)
 }
@@ -788,7 +788,7 @@ mod test {
 
     macro_rules! assert_msgpack_circular(
         ($inp:expr) => (
-            assert_eq!($inp, from_msgpack(Encoder::to_msgpack(&$inp).ok().unwrap()).ok().unwrap())
+            assert_eq!($inp, from_msgpack(Encoder::to_msgpack(&$inp).ok().unwrap().as_slice()).ok().unwrap())
         );
     )
 
