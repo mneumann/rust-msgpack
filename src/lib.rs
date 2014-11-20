@@ -457,8 +457,13 @@ impl<'a> serialize::Decoder<IoError> for Decoder<'a> {
             self.read_enum_variant_arg(idx, f)
         }
 
-    fn read_tuple<T>(&mut self, f: |&mut Decoder<'a>, uint| -> IoResult<T>) -> IoResult<T> {
-        self.read_seq(f)
+    fn read_tuple<T>(&mut self, exp_len: uint, f: |&mut Decoder<'a>| -> IoResult<T>) -> IoResult<T> {
+        let len = try!(self._read_vec_len());
+        if exp_len == len {
+            f(self)
+        } else {
+            panic!("Wrong tuple length") // XXX
+        }
     }
 
     fn read_tuple_arg<T>(&mut self, idx: uint, f: |&mut Decoder<'a>| -> IoResult<T>) -> IoResult<T> {
@@ -466,10 +471,10 @@ impl<'a> serialize::Decoder<IoError> for Decoder<'a> {
     }
 
     fn read_tuple_struct<T>(&mut self,
-                            _name: &str,
-                            f: |&mut Decoder<'a>, uint| -> IoResult<T>)
+                            _name: &str, len: uint,
+                            f: |&mut Decoder<'a>| -> IoResult<T>)
         -> IoResult<T> {
-            self.read_tuple(f)
+            self.read_tuple(len, f)
         }
 
     fn read_tuple_struct_arg<T>(&mut self,
@@ -744,32 +749,37 @@ impl<'a> serialize::Encoder<IoError> for Encoder<'a> {
     }
 }
 
-impl<'a> serialize::Encodable<Encoder<'a>, IoError> for Value {
-    fn encode(&self, s: &mut Encoder<'a>) -> IoResult<()> {
+impl<E: serialize::Encoder<S>, S> serialize::Encodable<E, S> for Value {
+    fn encode(&self, e: &mut E) -> Result<(), S> {
         match *self {
-            Value::Nil => (s as &mut serialize::Encoder<IoError>).emit_nil(),
-            Value::Boolean(b) => (s as &mut serialize::Encoder<IoError>).emit_bool(b),
-            Value::Integer(i) => (s as &mut serialize::Encoder<IoError>).emit_i64(i),
-            Value::Unsigned(u) => (s as &mut serialize::Encoder<IoError>).emit_u64(u),
-            Value::Float(f) => (s as &mut serialize::Encoder<IoError>).emit_f32(f),
-            Value::Double(d) => (s as &mut serialize::Encoder<IoError>).emit_f64(d),
+            Value::Nil => e.emit_nil(),
+            Value::Boolean(b) => e.emit_bool(b),
+            Value::Integer(i) => e.emit_i64(i),
+            Value::Unsigned(u) => e.emit_u64(u),
+            Value::Float(f) => e.emit_f32(f),
+            Value::Double(d) => e.emit_f64(d),
             Value::Array(ref ary) => {
-                try!(s._emit_array_len(ary.len()));
-                for elt in ary.iter() { try!(elt.encode(s)); }
-                Ok(())
+                e.emit_seq(ary.len(), |e2| {
+                    for (i, elt) in ary.iter().enumerate() {
+                        try!(e2.emit_seq_elt(i, |e3| { elt.encode(e3) }));
+                    }
+                    Ok(())
+                })
             }
             Value::Map(ref map) => {
-                try!(s._emit_map_len(map.len()));
-                for &(ref key, ref val) in map.iter() {
-                    try!(key.encode(s));
-                    try!(val.encode(s));
-                }
-                Ok(())
+                e.emit_map(map.len(), |e2| {
+                    for (i, &(ref key, ref val)) in map.iter().enumerate() {
+                        try!(e2.emit_map_elt_key(i, |e3| { key.encode(e3) }));
+                        try!(e2.emit_map_elt_val(i, |e3| { val.encode(e3) }));
+                    }
+                    Ok(())
+                })
             }
-            Value::Str(ref str) => (s as &mut serialize::Encoder<IoError>).emit_str(from_utf8(str.as_slice()).unwrap()), // XXX
-                Value::Binary(_) => panic!(), // XXX
-                Value::Extended(_, _) => panic!() // XXX
+            Value::Str(ref str) => e.emit_str(from_utf8(str.as_slice()).unwrap()), // XXX
+            Value::Binary(_) => panic!(), // XXX
+            Value::Extended(_, _) => panic!() // XXX
         }
+
     }
 }
 
@@ -782,7 +792,7 @@ pub fn from_msgpack<'a, T: Decodable<Decoder<'a>, IoError>>(bytes: &'a [u8]) -> 
 
 #[cfg(test)]
 mod test {
-    use std::collections::hashmap::HashMap;
+    use std::collections::HashMap;
     use super::{Encoder, from_msgpack};
     use serialize::Encodable;
 
