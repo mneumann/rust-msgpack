@@ -1,7 +1,7 @@
 #![comment = "msgpack.org implementation for Rust"]
 #![license = "MIT/ASL2"]
 #![crate_type = "lib"]
-#![feature(struct_variant, macro_rules, globs)]
+#![feature(macro_rules, globs)]
 #![allow(unused_must_use, dead_code)]
 
 extern crate serialize;
@@ -151,7 +151,7 @@ impl<'a> Decoder<'a> {
         for _ in range(0, len) {
             v.push(try!(self.decode_value()));
         }
-        Ok(Array(v))
+        Ok(Value::Array(v))
     }
 
     fn decode_map(&mut self, len: uint) -> IoResult<Value> {
@@ -161,7 +161,7 @@ impl<'a> Decoder<'a> {
             let b = try!(self.decode_value());
             v.push((a, b));
         }
-        Ok(Map(v))
+        Ok(Value::Map(v))
     }
 
     fn decode_ext(&mut self, len: uint) -> IoResult<Value> {
@@ -169,62 +169,62 @@ impl<'a> Decoder<'a> {
         if typ < 0 {
             return Err(_invalid_input("Reserved type"));
         }
-        Ok(Extended(typ, try!(self.rd.read_exact(len))))
+        Ok(Value::Extended(typ, try!(self.rd.read_exact(len))))
     }
 
     fn decode_value(&mut self) -> IoResult<Value> {
         let c = try!(self._read_byte());
         match c {
-            0xc0         => Ok(Nil),
+            0xc0         => Ok(Value::Nil),
 
             0xc1         => Err(_invalid_input("Reserved")),
 
-            0xc2         => Ok(Boolean(false)),
-            0xc3         => Ok(Boolean(true)),
+            0xc2         => Ok(Value::Boolean(false)),
+            0xc3         => Ok(Value::Boolean(true)),
 
-            0x00 ... 0x7f => Ok(Unsigned(c as u64)),
-            0xcc         => self.rd.read_u8().map(|i| Unsigned(i as u64)),
-            0xcd         => self.rd.read_be_u16().map(|i| Unsigned(i as u64)),
-            0xce         => self.rd.read_be_u32().map(|i| Unsigned(i as u64)),
-            0xcf         => self.rd.read_be_u64().map(|i| Unsigned(i)),
+            0x00 ... 0x7f => Ok(Value::Unsigned(c as u64)),
+            0xcc         => self.rd.read_u8().map(|i| Value::Unsigned(i as u64)),
+            0xcd         => self.rd.read_be_u16().map(|i| Value::Unsigned(i as u64)),
+            0xce         => self.rd.read_be_u32().map(|i| Value::Unsigned(i as u64)),
+            0xcf         => self.rd.read_be_u64().map(|i| Value::Unsigned(i)),
 
-            0xd0         => self.rd.read_i8().map(|i| Integer(i as i64)),
-            0xd1         => self.rd.read_be_i16().map(|i| Integer(i as i64)),
-            0xd2         => self.rd.read_be_i32().map(|i| Integer(i as i64)),
-            0xd3         => self.rd.read_be_i64().map(|i| Integer(i)),
-            0xe0 ... 0xff => Ok(Integer((c as i8) as i64)),
+            0xd0         => self.rd.read_i8().map(|i| Value::Integer(i as i64)),
+            0xd1         => self.rd.read_be_i16().map(|i| Value::Integer(i as i64)),
+            0xd2         => self.rd.read_be_i32().map(|i| Value::Integer(i as i64)),
+            0xd3         => self.rd.read_be_i64().map(|i| Value::Integer(i)),
+            0xe0 ... 0xff => Ok(Value::Integer((c as i8) as i64)),
 
-            0xca         => read_float(&mut self.rd).map(|i| Float(i)),
-            0xcb         => read_double(&mut self.rd).map(|i| Double(i)),
+            0xca         => read_float(&mut self.rd).map(|i| Value::Float(i)),
+            0xcb         => read_double(&mut self.rd).map(|i| Value::Double(i)),
 
-            0xa0 ... 0xbf => self._read_raw((c as uint) & 0x1F).map(|i| Str(i)),
+            0xa0 ... 0xbf => self._read_raw((c as uint) & 0x1F).map(|i| Value::Str(i)),
             0xd9         => {
                 let l = try!(self.rd.read_u8()) as uint;
-                self._read_raw(l).map(|i| Str(i))
+                self._read_raw(l).map(|i| Value::Str(i))
             }
             0xda         => {
                 let l = try!(self.rd.read_be_u16()) as uint;
-                self._read_raw(l).map(|i| Str(i))
+                self._read_raw(l).map(|i| Value::Str(i))
             }
             0xdb         => {
                 let l = try!(self.rd.read_be_u32()) as uint;
-                self._read_raw(l).map(|i| Str(i))
+                self._read_raw(l).map(|i| Value::Str(i))
             }
 
             0xc4         => {
                 let l = try!(self.rd.read_u8()) as uint;
-                self._read_raw(l).map(|i| Binary(i))
+                self._read_raw(l).map(|i| Value::Binary(i))
             }
 
             0xc5         => {
                 let l = try!(self.rd.read_be_u16()) as uint;
-                self._read_raw(l).map(|i| Binary(i))
+                self._read_raw(l).map(|i| Value::Binary(i))
             }
 
 
             0xc6         => {
                 let l = try!(self.rd.read_be_u32()) as uint;
-                self._read_raw(l).map(|i| Binary(i))
+                self._read_raw(l).map(|i| Value::Binary(i))
             }
 
             0x90 ... 0x9f => self.decode_array((c as uint) & 0x0F),
@@ -747,18 +747,18 @@ impl<'a> serialize::Encoder<IoError> for Encoder<'a> {
 impl<'a> serialize::Encodable<Encoder<'a>, IoError> for Value {
     fn encode(&self, s: &mut Encoder<'a>) -> IoResult<()> {
         match *self {
-            Nil => (s as &mut serialize::Encoder<IoError>).emit_nil(),
-            Boolean(b) => (s as &mut serialize::Encoder<IoError>).emit_bool(b),
-            Integer(i) => (s as &mut serialize::Encoder<IoError>).emit_i64(i),
-            Unsigned(u) => (s as &mut serialize::Encoder<IoError>).emit_u64(u),
-            Float(f) => (s as &mut serialize::Encoder<IoError>).emit_f32(f),
-            Double(d) => (s as &mut serialize::Encoder<IoError>).emit_f64(d),
-            Array(ref ary) => {
+            Value::Nil => (s as &mut serialize::Encoder<IoError>).emit_nil(),
+            Value::Boolean(b) => (s as &mut serialize::Encoder<IoError>).emit_bool(b),
+            Value::Integer(i) => (s as &mut serialize::Encoder<IoError>).emit_i64(i),
+            Value::Unsigned(u) => (s as &mut serialize::Encoder<IoError>).emit_u64(u),
+            Value::Float(f) => (s as &mut serialize::Encoder<IoError>).emit_f32(f),
+            Value::Double(d) => (s as &mut serialize::Encoder<IoError>).emit_f64(d),
+            Value::Array(ref ary) => {
                 try!(s._emit_array_len(ary.len()));
                 for elt in ary.iter() { try!(elt.encode(s)); }
                 Ok(())
             }
-            Map(ref map) => {
+            Value::Map(ref map) => {
                 try!(s._emit_map_len(map.len()));
                 for &(ref key, ref val) in map.iter() {
                     try!(key.encode(s));
@@ -766,9 +766,9 @@ impl<'a> serialize::Encodable<Encoder<'a>, IoError> for Value {
                 }
                 Ok(())
             }
-            Str(ref str) => (s as &mut serialize::Encoder<IoError>).emit_str(from_utf8(str.as_slice()).unwrap()), // XXX
-                Binary(_) => fail!(), // XXX
-                Extended(_, _) => fail!() // XXX
+            Value::Str(ref str) => (s as &mut serialize::Encoder<IoError>).emit_str(from_utf8(str.as_slice()).unwrap()), // XXX
+                Value::Binary(_) => panic!(), // XXX
+                Value::Extended(_, _) => panic!() // XXX
         }
     }
 }
