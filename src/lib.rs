@@ -388,15 +388,22 @@ impl<'a, R: Reader> serialize::Decoder<IoError> for Decoder<R> {
         }
     }
 
-    fn read_enum<T>(&mut self, _name: &str, _f: |&mut Decoder<R>| -> IoResult<T>) -> IoResult<T> {
-        // XXX
-        Err(_invalid_input("read_enum not supported by rust-msgpack"))
+    fn read_enum<T>(&mut self, _name: &str, f: |&mut Decoder<R>| -> IoResult<T>) -> IoResult<T> {
+        f(self)
     }
-    fn read_enum_variant<T>(&mut self, _names: &[&str], _f: |&mut Decoder<R>, uint| -> IoResult<T>) -> IoResult<T> {
-        Err(_invalid_input("read_enum_variant not supported by rust-msgpack"))
+    fn read_enum_variant<T>(&mut self, names: &[&str], f: |&mut Decoder<R>, uint| -> IoResult<T>) -> IoResult<T> {
+        self.read_seq(|d, _len| {
+            let name = try!(d.read_str());
+            let idx = match names.iter().position(|n| name.as_slice() == *n) {
+                Some(idx) => idx,
+                None => { return Err(_invalid_input("unknown variant")); }
+            };
+
+            f(d, idx)
+        })
     }
-    fn read_enum_variant_arg<T>(&mut self, _idx: uint, _f: |&mut Decoder<R>| -> IoResult<T>) -> IoResult<T> {
-        Err(_invalid_input("read_enum_variant_arg not supported by rust-msgpack"))
+    fn read_enum_variant_arg<T>(&mut self, _idx: uint, f: |&mut Decoder<R>| -> IoResult<T>) -> IoResult<T> {
+        f(self)
     }
 
     #[inline(always)]
@@ -671,16 +678,19 @@ impl<'a> serialize::Encoder<IoError> for Encoder<'a> {
         self.wr.write(v.as_bytes())
     }
 
-    fn emit_enum(&mut self, _name: &str, _f: |&mut Encoder<'a>| -> IoResult<()>) -> IoResult<()> {
-        Err(_invalid_input("Enum not supported")) // XXX
+    fn emit_enum(&mut self, _name: &str, f: |&mut Encoder<'a>| -> IoResult<()>) -> IoResult<()> {
+        f(self)
     }
 
-    fn emit_enum_variant(&mut self, _name: &str, _id: uint, _cnt: uint, _f: |&mut Encoder<'a>| -> IoResult<()>) -> IoResult<()> {
-        Err(_invalid_input("Enum not supported")) // XXX
+    fn emit_enum_variant(&mut self, name: &str, _id: uint, cnt: uint, f: |&mut Encoder<'a>| -> IoResult<()>) -> IoResult<()> {
+        self.emit_seq(cnt + 1, |d| {
+            try!(d.emit_str(name));
+            f(d)
+        })
     }
 
-    fn emit_enum_variant_arg(&mut self, _idx: uint, _f: |&mut Encoder<'a>| -> IoResult<()>) -> IoResult<()> {
-        Err(_invalid_input("Enum not supported")) // XXX
+    fn emit_enum_variant_arg(&mut self, _idx: uint, f: |&mut Encoder<'a>| -> IoResult<()>) -> IoResult<()> {
+        f(self)
     }
 
     fn emit_enum_struct_variant(&mut self, name: &str, id: uint, cnt: uint, f: |&mut Encoder<'a>| -> IoResult<()>) -> IoResult<()> {
@@ -887,5 +897,17 @@ mod test {
         assert_msgpack_circular!(String::from_char(32, 'a'));
         assert_msgpack_circular!(String::from_char(256, 'a'));
         assert_msgpack_circular!(String::from_char(0x10000, 'a'));
+    }
+
+    #[deriving(Encodable,Decodable,PartialEq,Show)]
+    enum Animal {
+        Dog,
+        Frog(String, uint),
+    }
+
+    #[test]
+    fn test_circular_enum() {
+        assert_msgpack_circular!(Animal::Dog);
+        assert_msgpack_circular!(Animal::Frog("Henry".to_string(), 349));
     }
 }
