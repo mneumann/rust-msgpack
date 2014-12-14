@@ -1,6 +1,5 @@
 //! msgpack.org implementation for Rust
 
-#![license = "MIT/ASL2"]
 #![crate_type = "lib"]
 #![feature(macro_rules, globs)]
 #![allow(unused_must_use, dead_code)]

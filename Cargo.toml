@@ -11,3 +11,4 @@ authors = [
     "Ian Daniher",
     "Derek Chiang (Enchi Jiang)"
 ]
+license = "MIT/Apache-2.0"
