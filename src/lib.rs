@@ -505,7 +505,7 @@ impl<R: Reader> serialize::Decodable<Decoder<R>, IoError> for Value {
 
 /// A structure for implementing serialization to Msgpack.
 pub struct Encoder<'a> {
-    wr: &'a mut io::Writer + 'a
+    wr: &'a mut (io::Writer + 'a)
 }
 
 impl<'a> Encoder<'a> {
@@ -808,10 +808,10 @@ mod test {
     use serialize::Encodable;
 
     macro_rules! assert_msgpack_circular(
-        ($inp:expr) => (
+        ($ty:ty, $inp:expr) => (
             {
                 let bytes = Encoder::to_msgpack(&$inp).unwrap();
-                let value = from_msgpack(bytes.as_slice()).unwrap();
+                let value: $ty = from_msgpack(bytes.as_slice()).unwrap();
                 assert_eq!($inp, value)
             }
         );
@@ -820,31 +820,31 @@ mod test {
 
     #[test]
     fn test_circular_str() {
-      assert_msgpack_circular!("".to_string());
-      assert_msgpack_circular!("a".to_string());
-      assert_msgpack_circular!("abcdef".to_string());
+      assert_msgpack_circular!(String, "".to_string());
+      assert_msgpack_circular!(String, "a".to_string());
+      assert_msgpack_circular!(String, "abcdef".to_string());
     }
 
     #[test]
     fn test_circular_int() {
-      assert_msgpack_circular!(123 as int);
-      assert_msgpack_circular!(-123 as int);
+      assert_msgpack_circular!(int, 123 as int);
+      assert_msgpack_circular!(int, -123 as int);
     }
 
     #[test]
     fn test_circular_float() {
-      assert_msgpack_circular!(-1243.111 as f32);
+      assert_msgpack_circular!(f32, -1243.111 as f32);
     }
 
     #[test]
     fn test_circular_bool() {
-      assert_msgpack_circular!(true);
-      assert_msgpack_circular!(false);
+      assert_msgpack_circular!(bool, true);
+      assert_msgpack_circular!(bool, false);
     }
 
     #[test]
     fn test_circular_list() {
-      assert_msgpack_circular!(vec![1i,2i,3i]);
+      assert_msgpack_circular!(Vec<int>, vec![1i,2i,3i]);
     }
 
     #[test]
@@ -852,21 +852,21 @@ mod test {
       let mut v = HashMap::new();
       v.insert(1i, 2i);
       v.insert(3i, 4i);
-      assert_msgpack_circular!(v);
+      assert_msgpack_circular!(HashMap<int, int>, v);
     }
 
     #[test]
     fn test_circular_option() {
       let v: Option<int> = Some(1i);
-      assert_msgpack_circular!(v);
+      assert_msgpack_circular!(Option<int>, v);
 
       let v: Option<int> = None;
-      assert_msgpack_circular!(v);
+      assert_msgpack_circular!(Option<int>, v);
     }
 
     #[test]
     fn test_circular_char() {
-      assert_msgpack_circular!('a');
+      assert_msgpack_circular!(char, 'a');
     }
 
     #[deriving(Encodable,Decodable,PartialEq,Show)]
@@ -888,15 +888,15 @@ mod test {
       let s2 = S { f: 5u8, g: 1u16, i: "bar".to_string(), a: vec![1u32,2u32,3u32], c: c.clone() };
       let s = vec![s1, s2];
 
-      assert_msgpack_circular!(s);
+      assert_msgpack_circular!(Vec<S>, s);
     }
 
     #[test]
     fn test_circular_str_lengths() {
-        assert_msgpack_circular!(String::from_char(4, 'a'));
-        assert_msgpack_circular!(String::from_char(32, 'a'));
-        assert_msgpack_circular!(String::from_char(256, 'a'));
-        assert_msgpack_circular!(String::from_char(0x10000, 'a'));
+        assert_msgpack_circular!(String, String::from_char(4, 'a'));
+        assert_msgpack_circular!(String, String::from_char(32, 'a'));
+        assert_msgpack_circular!(String, String::from_char(256, 'a'));
+        assert_msgpack_circular!(String, String::from_char(0x10000, 'a'));
     }
 
     #[deriving(Encodable,Decodable,PartialEq,Show)]
@@ -907,7 +907,7 @@ mod test {
 
     #[test]
     fn test_circular_enum() {
-        assert_msgpack_circular!(Animal::Dog);
-        assert_msgpack_circular!(Animal::Frog("Henry".to_string(), 349));
+        assert_msgpack_circular!(Animal, Animal::Dog);
+        assert_msgpack_circular!(Animal, Animal::Frog("Henry".to_string(), 349));
     }
 }
