@@ -1,4 +1,5 @@
-#![comment = "msgpack.org implementation for Rust"]
+//! msgpack.org implementation for Rust
+
 #![license = "MIT/ASL2"]
 #![crate_type = "lib"]
 #![feature(macro_rules, globs)]
@@ -521,7 +522,7 @@ impl<'a> Encoder<'a> {
             let mut encoder = Encoder::new(&mut m as &mut io::Writer);
             try!(t.encode(mem::transmute(&mut encoder)));
         }
-        Ok(m.unwrap())
+        Ok(m.into_inner())
     }
 
     /// Emits the most efficient representation of the given unsigned integer
