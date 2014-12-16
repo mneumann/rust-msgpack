@@ -395,15 +395,15 @@ impl<'a, R: Reader> serialize::Decoder<IoError> for Decoder<R> {
 
     fn read_enum_variant<T,F>(&mut self, names: &[&str], f: F) -> IoResult<T> 
     where F: FnOnce(&mut Decoder<R>, uint) -> IoResult<T> {
-        self.read_seq(|d, _len| {
+        let idx = try!(self.read_seq(|d, _len| {
             let name = try!(d.read_str());
-            let idx = match names.iter().position(|n| name.as_slice() == *n) {
-                Some(idx) => idx,
-                None => { return Err(_invalid_input("unknown variant")); }
-            };
+            match names.iter().position(|n| name.as_slice() == *n) {
+                Some(idx) => Ok(idx),
+                None => { Err(_invalid_input("unknown variant")) },
+            }
+        }));
 
-            f(d, idx)
-        })
+        f(self, idx)
     }
     fn read_enum_variant_arg<T,F>(&mut self, _idx: uint, f: F) -> IoResult<T> 
     where F: FnOnce(&mut Decoder<R>) -> IoResult<T> {
@@ -705,10 +705,8 @@ impl<'a> serialize::Encoder<IoError> for Encoder<'a> {
 
     fn emit_enum_variant<F>(&mut self, name: &str, _id: uint, cnt: uint, f: F) -> IoResult<()> 
     where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> {
-        self.emit_seq(cnt + 1, |d| {
-            try!(d.emit_str(name));
-            f(d)
-        })
+        self.emit_seq(cnt + 1, |d| { d.emit_str(name) });
+        f(self)
     }
 
     fn emit_enum_variant_arg<F>(&mut self, _idx: uint, f: F) -> IoResult<()> 
