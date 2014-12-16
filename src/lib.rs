@@ -1,5 +1,5 @@
-#![comment = "msgpack.org implementation for Rust"]
-#![license = "MIT/ASL2"]
+//! msgpack.org implementation for Rust
+
 #![crate_type = "lib"]
 #![feature(macro_rules, globs)]
 #![allow(unused_must_use, dead_code)]
@@ -7,7 +7,7 @@
 extern crate serialize;
 
 use std::io;
-use std::io::{MemWriter, IoResult, IoError, InvalidInput};
+use std::io::{BufReader, MemWriter, IoResult, IoError, InvalidInput};
 use std::str::from_utf8;
 use std::mem;
 
@@ -45,23 +45,23 @@ pub fn _invalid_input(s: &'static str) -> IoError {
 }
 
 /// A structure to decode Msgpack from a reader.
-pub struct Decoder<'a> {
-    rd: io::BufReader<'a>,
+pub struct Decoder<R: Reader> {
+    rd: R,
     next_byte: Option<u8>
 }
 
-impl<'a> Decoder<'a> {
+impl<R: Reader> Decoder<R> {
     /// Creates a new Msgpack decoder for decoding from the
     /// specified reader.
-    pub fn new(bytes: &'a [u8]) -> Decoder<'a> {
+    pub fn new(rd: R) -> Decoder<R> {
         Decoder {
-            rd: io::BufReader::new(bytes),
+            rd: rd,
             next_byte: None
         }
     }
 }
 
-impl<'a> Decoder<'a> {
+impl<'a, R: Reader> Decoder<R> {
     fn _peek_byte(&mut self) -> IoResult<u8> {
         match self.next_byte {
             Some(byte) => Ok(byte),
@@ -252,7 +252,7 @@ impl<'a> Decoder<'a> {
 
 }
 
-impl<'a> serialize::Decoder<IoError> for Decoder<'a> {
+impl<'a, R: Reader> serialize::Decoder<IoError> for Decoder<R> {
     #[inline(always)]
     fn read_nil(&mut self) -> IoResult<()> {
         match self._read_byte() {
@@ -388,30 +388,37 @@ impl<'a> serialize::Decoder<IoError> for Decoder<'a> {
         }
     }
 
-    fn read_enum<T>(&mut self, _name: &str, _f: |&mut Decoder<'a>| -> IoResult<T>) -> IoResult<T> {
-        // XXX
-        Err(_invalid_input("read_enum not supported by rust-msgpack"))
+    fn read_enum<T>(&mut self, _name: &str, f: |&mut Decoder<R>| -> IoResult<T>) -> IoResult<T> {
+        f(self)
     }
-    fn read_enum_variant<T>(&mut self, _names: &[&str], _f: |&mut Decoder<'a>, uint| -> IoResult<T>) -> IoResult<T> {
-        Err(_invalid_input("read_enum_variant not supported by rust-msgpack"))
+    fn read_enum_variant<T>(&mut self, names: &[&str], f: |&mut Decoder<R>, uint| -> IoResult<T>) -> IoResult<T> {
+        self.read_seq(|d, _len| {
+            let name = try!(d.read_str());
+            let idx = match names.iter().position(|n| name.as_slice() == *n) {
+                Some(idx) => idx,
+                None => { return Err(_invalid_input("unknown variant")); }
+            };
+
+            f(d, idx)
+        })
     }
-    fn read_enum_variant_arg<T>(&mut self, _idx: uint, _f: |&mut Decoder<'a>| -> IoResult<T>) -> IoResult<T> {
-        Err(_invalid_input("read_enum_variant_arg not supported by rust-msgpack"))
+    fn read_enum_variant_arg<T>(&mut self, _idx: uint, f: |&mut Decoder<R>| -> IoResult<T>) -> IoResult<T> {
+        f(self)
     }
 
     #[inline(always)]
-    fn read_seq<T>(&mut self, f: |&mut Decoder<'a>, uint| -> IoResult<T>) -> IoResult<T> {
+    fn read_seq<T>(&mut self, f: |&mut Decoder<R>, uint| -> IoResult<T>) -> IoResult<T> {
         let len = try!(self._read_vec_len());
         f(self, len)
     }
 
     #[inline(always)]
-    fn read_seq_elt<T>(&mut self, _idx: uint, f: |&mut Decoder<'a>| -> IoResult<T>) -> IoResult<T> {
+    fn read_seq_elt<T>(&mut self, _idx: uint, f: |&mut Decoder<R>| -> IoResult<T>) -> IoResult<T> {
         f(self)
     }
 
     #[inline(always)]
-    fn read_struct<T>(&mut self, _name: &str, len: uint, f: |&mut Decoder<'a>| -> IoResult<T>) -> IoResult<T> {
+    fn read_struct<T>(&mut self, _name: &str, len: uint, f: |&mut Decoder<R>| -> IoResult<T>) -> IoResult<T> {
         // XXX: Why are we using a map length here?
         if len != try!(self._read_map_len()) {
             Err(_invalid_input("invalid length for struct"))
@@ -421,29 +428,29 @@ impl<'a> serialize::Decoder<IoError> for Decoder<'a> {
     }
 
     #[inline(always)]
-    fn read_struct_field<T>(&mut self, _name: &str, _idx: uint, f: |&mut Decoder<'a>| -> IoResult<T>) -> IoResult<T> {
+    fn read_struct_field<T>(&mut self, _name: &str, _idx: uint, f: |&mut Decoder<R>| -> IoResult<T>) -> IoResult<T> {
         f(self)
     }
 
-    fn read_option<T>(&mut self, f: |&mut Decoder<'a>, bool| -> IoResult<T>) -> IoResult<T> {
+    fn read_option<T>(&mut self, f: |&mut Decoder<R>, bool| -> IoResult<T>) -> IoResult<T> {
         match try!(self._peek_byte()) {
             0xc0 => f(self, false),
             _    => f(self, true)
         }
     }
 
-    fn read_map<T>(&mut self, f: |&mut Decoder<'a>, uint| -> IoResult<T>) -> IoResult<T> {
+    fn read_map<T>(&mut self, f: |&mut Decoder<R>, uint| -> IoResult<T>) -> IoResult<T> {
         let len = try!(self._read_map_len());
         f(self, len)
     }
 
-    fn read_map_elt_key<T>(&mut self, _idx: uint, f: |&mut Decoder<'a>| -> IoResult<T>) -> IoResult<T> { f(self) }
-    fn read_map_elt_val<T>(&mut self, _idx: uint, f: |&mut Decoder<'a>| -> IoResult<T>) -> IoResult<T> { f(self) }
+    fn read_map_elt_key<T>(&mut self, _idx: uint, f: |&mut Decoder<R>| -> IoResult<T>) -> IoResult<T> { f(self) }
+    fn read_map_elt_val<T>(&mut self, _idx: uint, f: |&mut Decoder<R>| -> IoResult<T>) -> IoResult<T> { f(self) }
 
 
     fn read_enum_struct_variant<T>(&mut self,
                                    names: &[&str],
-                                   f: |&mut Decoder<'a>, uint| -> IoResult<T>)
+                                   f: |&mut Decoder<R>, uint| -> IoResult<T>)
         -> IoResult<T> {
             self.read_enum_variant(names, f)
         }
@@ -452,12 +459,12 @@ impl<'a> serialize::Decoder<IoError> for Decoder<'a> {
     fn read_enum_struct_variant_field<T>(&mut self,
                                          _name: &str,
                                          idx: uint,
-                                         f: |&mut Decoder<'a>| -> IoResult<T>)
+                                         f: |&mut Decoder<R>| -> IoResult<T>)
         -> IoResult<T> {
             self.read_enum_variant_arg(idx, f)
         }
 
-    fn read_tuple<T>(&mut self, exp_len: uint, f: |&mut Decoder<'a>| -> IoResult<T>) -> IoResult<T> {
+    fn read_tuple<T>(&mut self, exp_len: uint, f: |&mut Decoder<R>| -> IoResult<T>) -> IoResult<T> {
         let len = try!(self._read_vec_len());
         if exp_len == len {
             f(self)
@@ -466,20 +473,20 @@ impl<'a> serialize::Decoder<IoError> for Decoder<'a> {
         }
     }
 
-    fn read_tuple_arg<T>(&mut self, idx: uint, f: |&mut Decoder<'a>| -> IoResult<T>) -> IoResult<T> {
+    fn read_tuple_arg<T>(&mut self, idx: uint, f: |&mut Decoder<R>| -> IoResult<T>) -> IoResult<T> {
         self.read_seq_elt(idx, f)
     }
 
     fn read_tuple_struct<T>(&mut self,
                             _name: &str, len: uint,
-                            f: |&mut Decoder<'a>| -> IoResult<T>)
+                            f: |&mut Decoder<R>| -> IoResult<T>)
         -> IoResult<T> {
             self.read_tuple(len, f)
         }
 
     fn read_tuple_struct_arg<T>(&mut self,
                                 idx: uint,
-                                f: |&mut Decoder<'a>| -> IoResult<T>)
+                                f: |&mut Decoder<R>| -> IoResult<T>)
         -> IoResult<T> {
             self.read_tuple_arg(idx, f)
         }
@@ -489,8 +496,8 @@ impl<'a> serialize::Decoder<IoError> for Decoder<'a> {
     }
 }
 
-impl<'a> serialize::Decodable<Decoder<'a>, IoError> for Value {
-    fn decode(s: &mut Decoder<'a>) -> IoResult<Value> {
+impl<R: Reader> serialize::Decodable<Decoder<R>, IoError> for Value {
+    fn decode(s: &mut Decoder<R>) -> IoResult<Value> {
         s.decode_value()
     }
 }
@@ -498,7 +505,7 @@ impl<'a> serialize::Decodable<Decoder<'a>, IoError> for Value {
 
 /// A structure for implementing serialization to Msgpack.
 pub struct Encoder<'a> {
-    wr: &'a mut io::Writer + 'a
+    wr: &'a mut (io::Writer + 'a)
 }
 
 impl<'a> Encoder<'a> {
@@ -514,7 +521,7 @@ impl<'a> Encoder<'a> {
             let mut encoder = Encoder::new(&mut m as &mut io::Writer);
             try!(t.encode(mem::transmute(&mut encoder)));
         }
-        Ok(m.unwrap())
+        Ok(m.into_inner())
     }
 
     /// Emits the most efficient representation of the given unsigned integer
@@ -671,16 +678,19 @@ impl<'a> serialize::Encoder<IoError> for Encoder<'a> {
         self.wr.write(v.as_bytes())
     }
 
-    fn emit_enum(&mut self, _name: &str, _f: |&mut Encoder<'a>| -> IoResult<()>) -> IoResult<()> {
-        Err(_invalid_input("Enum not supported")) // XXX
+    fn emit_enum(&mut self, _name: &str, f: |&mut Encoder<'a>| -> IoResult<()>) -> IoResult<()> {
+        f(self)
     }
 
-    fn emit_enum_variant(&mut self, _name: &str, _id: uint, _cnt: uint, _f: |&mut Encoder<'a>| -> IoResult<()>) -> IoResult<()> {
-        Err(_invalid_input("Enum not supported")) // XXX
+    fn emit_enum_variant(&mut self, name: &str, _id: uint, cnt: uint, f: |&mut Encoder<'a>| -> IoResult<()>) -> IoResult<()> {
+        self.emit_seq(cnt + 1, |d| {
+            try!(d.emit_str(name));
+            f(d)
+        })
     }
 
-    fn emit_enum_variant_arg(&mut self, _idx: uint, _f: |&mut Encoder<'a>| -> IoResult<()>) -> IoResult<()> {
-        Err(_invalid_input("Enum not supported")) // XXX
+    fn emit_enum_variant_arg(&mut self, _idx: uint, f: |&mut Encoder<'a>| -> IoResult<()>) -> IoResult<()> {
+        f(self)
     }
 
     fn emit_enum_struct_variant(&mut self, name: &str, id: uint, cnt: uint, f: |&mut Encoder<'a>| -> IoResult<()>) -> IoResult<()> {
@@ -785,8 +795,9 @@ impl<E: serialize::Encoder<S>, S> serialize::Encodable<E, S> for Value {
 
 
 
-pub fn from_msgpack<'a, T: Decodable<Decoder<'a>, IoError>>(bytes: &'a [u8]) -> IoResult<T> {
-    let mut decoder = Decoder::new(bytes);
+pub fn from_msgpack<'a, T: Decodable<Decoder<BufReader<'a>>, IoError>>(bytes: &'a [u8]) -> IoResult<T> {
+    let rd = BufReader::new(bytes);
+    let mut decoder = Decoder::new(rd);
     Decodable::decode(&mut decoder)
 }
 
@@ -797,39 +808,43 @@ mod test {
     use serialize::Encodable;
 
     macro_rules! assert_msgpack_circular(
-        ($inp:expr) => (
-            assert_eq!($inp, from_msgpack(Encoder::to_msgpack(&$inp).ok().unwrap().as_slice()).ok().unwrap())
+        ($ty:ty, $inp:expr) => (
+            {
+                let bytes = Encoder::to_msgpack(&$inp).unwrap();
+                let value: $ty = from_msgpack(bytes.as_slice()).unwrap();
+                assert_eq!($inp, value)
+            }
         );
     )
 
 
     #[test]
     fn test_circular_str() {
-      assert_msgpack_circular!("".to_string());
-      assert_msgpack_circular!("a".to_string());
-      assert_msgpack_circular!("abcdef".to_string());
+      assert_msgpack_circular!(String, "".to_string());
+      assert_msgpack_circular!(String, "a".to_string());
+      assert_msgpack_circular!(String, "abcdef".to_string());
     }
 
     #[test]
     fn test_circular_int() {
-      assert_msgpack_circular!(123 as int);
-      assert_msgpack_circular!(-123 as int);
+      assert_msgpack_circular!(int, 123 as int);
+      assert_msgpack_circular!(int, -123 as int);
     }
 
     #[test]
     fn test_circular_float() {
-      assert_msgpack_circular!(-1243.111 as f32);
+      assert_msgpack_circular!(f32, -1243.111 as f32);
     }
 
     #[test]
     fn test_circular_bool() {
-      assert_msgpack_circular!(true);
-      assert_msgpack_circular!(false);
+      assert_msgpack_circular!(bool, true);
+      assert_msgpack_circular!(bool, false);
     }
 
     #[test]
     fn test_circular_list() {
-      assert_msgpack_circular!(vec![1i,2i,3i]);
+      assert_msgpack_circular!(Vec<int>, vec![1i,2i,3i]);
     }
 
     #[test]
@@ -837,21 +852,21 @@ mod test {
       let mut v = HashMap::new();
       v.insert(1i, 2i);
       v.insert(3i, 4i);
-      assert_msgpack_circular!(v);
+      assert_msgpack_circular!(HashMap<int, int>, v);
     }
 
     #[test]
     fn test_circular_option() {
       let v: Option<int> = Some(1i);
-      assert_msgpack_circular!(v);
+      assert_msgpack_circular!(Option<int>, v);
 
       let v: Option<int> = None;
-      assert_msgpack_circular!(v);
+      assert_msgpack_circular!(Option<int>, v);
     }
 
     #[test]
     fn test_circular_char() {
-      assert_msgpack_circular!('a');
+      assert_msgpack_circular!(char, 'a');
     }
 
     #[deriving(Encodable,Decodable,PartialEq,Show)]
@@ -873,14 +888,26 @@ mod test {
       let s2 = S { f: 5u8, g: 1u16, i: "bar".to_string(), a: vec![1u32,2u32,3u32], c: c.clone() };
       let s = vec![s1, s2];
 
-      assert_msgpack_circular!(s);
+      assert_msgpack_circular!(Vec<S>, s);
     }
 
     #[test]
     fn test_circular_str_lengths() {
-        assert_msgpack_circular!(String::from_char(4, 'a'));
-        assert_msgpack_circular!(String::from_char(32, 'a'));
-        assert_msgpack_circular!(String::from_char(256, 'a'));
-        assert_msgpack_circular!(String::from_char(0x10000, 'a'));
+        assert_msgpack_circular!(String, String::from_char(4, 'a'));
+        assert_msgpack_circular!(String, String::from_char(32, 'a'));
+        assert_msgpack_circular!(String, String::from_char(256, 'a'));
+        assert_msgpack_circular!(String, String::from_char(0x10000, 'a'));
+    }
+
+    #[deriving(Encodable,Decodable,PartialEq,Show)]
+    enum Animal {
+        Dog,
+        Frog(String, uint),
+    }
+
+    #[test]
+    fn test_circular_enum() {
+        assert_msgpack_circular!(Animal, Animal::Dog);
+        assert_msgpack_circular!(Animal, Animal::Frog("Henry".to_string(), 349));
     }
 }
