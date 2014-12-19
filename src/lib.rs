@@ -853,7 +853,7 @@ mod test {
                 assert_eq!($inp, value)
             }
         );
-    )
+    );
 
 
     #[test]
