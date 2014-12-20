@@ -903,6 +903,15 @@ mod test {
     }
 
     #[test]
+    fn test_circular_embedded_option() {
+        let v: (Option<int>, Option<int>) = (None, Some(1i));
+        assert_msgpack_circular!((Option<int>, Option<int>), v);
+
+        let v: (Option<int>, Option<int>) = (Some(1i), Some(1i));
+        assert_msgpack_circular!((Option<int>, Option<int>), v);
+    }
+
+    #[test]
     fn test_circular_char() {
       assert_msgpack_circular!(char, 'a');
     }
