@@ -443,8 +443,8 @@ impl<'a, R: Reader> serialize::Decoder<IoError> for Decoder<R> {
     fn read_option<T,F>(&mut self, mut f: F) -> IoResult<T>
     where F: FnMut(&mut Decoder<R>, bool) -> IoResult<T> {
         match try!(self._peek_byte()) {
-            0xc0 => f(self, false),
-            _    => f(self, true)
+            0xc0 => { self._read_byte(); f(self, false) }, // consume the nil byte from packed format
+            _    => { f(self, true) },
         }
     }
 
