@@ -393,8 +393,8 @@ impl<'a, R: Reader> serialize::Decoder<IoError> for Decoder<R> {
         f(self)
     }
 
-    fn read_enum_variant<T,F>(&mut self, names: &[&str], f: F) -> IoResult<T> 
-    where F: FnOnce(&mut Decoder<R>, uint) -> IoResult<T> {
+    fn read_enum_variant<T,F>(&mut self, names: &[&str], mut f: F) -> IoResult<T>
+    where F: FnMut(&mut Decoder<R>, uint) -> IoResult<T> {
         let idx = try!(self.read_seq(|d, _len| {
             let name = try!(d.read_str());
             match names.iter().position(|n| name.as_slice() == *n) {
@@ -440,8 +440,8 @@ impl<'a, R: Reader> serialize::Decoder<IoError> for Decoder<R> {
         f(self)
     }
 
-    fn read_option<T,F>(&mut self, f: F) -> IoResult<T> 
-    where F: FnOnce(&mut Decoder<R>, bool) -> IoResult<T> {
+    fn read_option<T,F>(&mut self, mut f: F) -> IoResult<T>
+    where F: FnMut(&mut Decoder<R>, bool) -> IoResult<T> {
         match try!(self._peek_byte()) {
             0xc0 => f(self, false),
             _    => f(self, true)
@@ -463,11 +463,11 @@ impl<'a, R: Reader> serialize::Decoder<IoError> for Decoder<R> {
 
     fn read_enum_struct_variant<T,F>(&mut self,
                                      names: &[&str],
-                                     f: F) -> IoResult<T> 
-    where F: FnOnce(&mut Decoder<R>, uint) -> IoResult<T> {
+                                     f: F) -> IoResult<T>
+    where F: FnMut(&mut Decoder<R>, uint) -> IoResult<T> {
 
             self.read_enum_variant(names, f)
-        }
+    }
 
 
     fn read_enum_struct_variant_field<T,F>(&mut self,
@@ -853,7 +853,7 @@ mod test {
                 assert_eq!($inp, value)
             }
         );
-    )
+    );
 
 
     #[test]
