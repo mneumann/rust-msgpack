@@ -11,6 +11,7 @@ authors = [
     "Erick Tryzelaar",
     "OGINO Masanori",
     "Ian Daniher",
-    "Derek Chiang (Enchi Jiang)"
+    "Derek Chiang (Enchi Jiang)",
+    "Evgeny Safronov"
 ]
 license = "MIT/Apache-2.0"
