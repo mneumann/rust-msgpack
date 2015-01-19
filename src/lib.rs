@@ -687,7 +687,7 @@ impl<'a> serialize::Encoder<IoError> for Encoder<'a> {
     }
 
     fn emit_char(&mut self, v: char)  -> IoResult<()> {
-        let s = String::from_char(1, v); // XXX
+        let mut s = String::with_capacity(1);
         self.emit_str(s.as_slice())
     }
 
