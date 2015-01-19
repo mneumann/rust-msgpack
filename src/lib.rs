@@ -465,10 +465,8 @@ impl<'a, R: Reader> serialize::Decoder<IoError> for Decoder<R> {
                                      names: &[&str],
                                      f: F) -> IoResult<T>
     where F: FnMut(&mut Decoder<R>, uint) -> IoResult<T> {
-
             self.read_enum_variant(names, f)
     }
-
 
     fn read_enum_struct_variant_field<T,F>(&mut self,
                                            _name: &str,
@@ -854,7 +852,6 @@ mod test {
             }
         );
     );
-
 
     #[test]
     fn test_circular_str() {
