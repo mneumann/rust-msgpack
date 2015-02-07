@@ -546,7 +546,7 @@ impl<'a> Encoder<'a> {
         Ok(m.into_inner())
     }
 
-    /// Emits the most efficient representation of the given unsigned isizeeger
+    /// Emits the most efficient representation of the given unsigned integer
     fn _emit_unsigned(&mut self, v: u64) -> IoResult<()> {
         if v <= 127 {
             try!(self.wr.write_u8(v as u8));
@@ -571,7 +571,7 @@ impl<'a> Encoder<'a> {
         Ok(())
     }
 
-    /// Emits the most efficient representation of the given signed isizeeger
+    /// Emits the most efficient representation of the given signed integer
     fn _emit_signed(&mut self, v: i64) -> IoResult<()> {
         if v >= std::i8::MIN as i64 && v <= std::i8::MAX as i64 {
             let v = v as i8;
