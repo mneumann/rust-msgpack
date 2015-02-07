@@ -2,6 +2,7 @@
 
 #![crate_type = "lib"]
 #![allow(unused_must_use, dead_code)]
+#![feature(io, core, rustc_private)]
 
 extern crate serialize;
 
@@ -148,7 +149,7 @@ impl<'a, R: Reader> Decoder<R> {
 
     fn decode_array(&mut self, len: usize) -> IoResult<Value> {
         let mut v = Vec::with_capacity(len);
-        for _ in range(0, len) {
+        for _ in 0 .. len {
             v.push(try!(self.decode_value()));
         }
         Ok(Value::Array(v))
@@ -156,7 +157,7 @@ impl<'a, R: Reader> Decoder<R> {
 
     fn decode_map(&mut self, len: usize) -> IoResult<Value> {
         let mut v = Vec::with_capacity(len);
-        for _ in range(0, len) {
+        for _ in 0 .. len {
             let a = try!(self.decode_value());
             let b = try!(self.decode_value());
             v.push((a, b));
@@ -700,7 +701,7 @@ impl<'a> serialize::Encoder for Encoder<'a> {
 
     fn emit_str(&mut self, v: &str) -> IoResult<()> {
         try!(self._emit_str_len(v.len()));
-        self.wr.write(v.as_bytes())
+        self.wr.write_all(v.as_bytes())
     }
 
     fn emit_enum<F>(&mut self, _name: &str, f: F) -> IoResult<()> 
@@ -920,7 +921,7 @@ mod test {
       assert_msgpack_circular!(char, 'a');
     }
 
-    #[derive(Encodable,Decodable,PartialEq,Show)]
+    #[derive(Encodable,Decodable,PartialEq,Debug)]
     struct S {
       f: u8,
       g: u16,
