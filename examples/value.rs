@@ -1,15 +1,14 @@
-#![feature(phase)]
-
-#[phase(plugin, link)] extern crate log;
 extern crate msgpack;
 
-use std::io::{File};
+use std::old_io::File;
 use std::os::args;
 
 fn main() {
   let contents = File::open(&Path::new(args()[1].clone())).read_to_end().ok().unwrap();
-  debug!("{}", contents);
+  println!("{:?}", contents);
 
+/* todo
   let a: msgpack::Value = msgpack::from_msgpack(contents.as_slice()).ok().unwrap();
-  debug!("{}", a);
+  println!("{:?}", a);
+*/
 }

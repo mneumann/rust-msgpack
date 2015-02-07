@@ -1,7 +1,6 @@
-use super::{Value,Encoder,Decoder, _invalid_input};
-use serialize;
-use serialize::{Encodable,Decodable};
-use std::io::{IoError, IoResult};
+use super::{Value, _invalid_input};
+use serialize::{Encodable, Decodable, Encoder, Decoder};
+use std::old_io::{IoError, IoResult};
 
 pub enum RpcMessage {
   RpcRequest      {msgid: u32, method: String, params: Vec<Value>}, // 0
@@ -9,26 +8,26 @@ pub enum RpcMessage {
   RpcNotification {method: String, params: Vec<Value>} // 2
 }
 
-impl<'a> serialize::Encodable<Encoder<'a>, IoError> for RpcMessage {
-  fn encode(&self, s: &mut Encoder<'a>) -> IoResult<()> {
+impl Encodable for RpcMessage {
+  fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
     match *self {
       RpcMessage::RpcRequest {msgid, ref method, ref params} => {
-        (0u, msgid, method, params).encode(s)
+        (0us, msgid, method, params).encode(s)
       }
       RpcMessage::RpcResponse {msgid, ref error, ref result} => {
-        (1u, msgid, error, result).encode(s)
+        (1us, msgid, error, result).encode(s)
       }
       RpcMessage::RpcNotification {ref method, ref params} => {
-        (2u, method, params).encode(s)
+        (2us, method, params).encode(s)
       }
     }
   }
 }
 
-impl<R: Reader> serialize::Decodable<Decoder<R>, IoError> for RpcMessage {
+impl<R: Reader> Decodable<Decoder<R>, IoError> for RpcMessage {
   fn decode(s: &mut Decoder<R>) -> IoResult<RpcMessage> {
     let len = try!(s._read_vec_len());
-    let ty: uint = try!(Decodable::decode(s));
+    let ty: usize = try!(Decodable::decode(s));
 
     match ty {
       0 => {
