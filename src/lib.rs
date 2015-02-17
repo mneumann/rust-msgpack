@@ -2,16 +2,16 @@
 
 #![crate_type = "lib"]
 #![allow(unused_must_use, dead_code)]
-#![feature(io, core, rustc_private)]
+#![feature(io, core)]
 
-extern crate serialize;
+extern crate "rustc-serialize" as rustc_serialize;
 
 use std::old_io::{BufReader, MemWriter, IoResult, IoError, InvalidInput};
 use std::str::from_utf8;
 use std::mem;
 use std::num::ToPrimitive;
 
-use serialize::{Encodable, Decodable};
+use rustc_serialize::{Encodable, Decodable};
 
 #[cfg(todo)]
 mod rpc;
@@ -253,7 +253,7 @@ impl<'a, R: Reader> Decoder<R> {
 
 }
 
-impl<R: Reader> serialize::Decoder for Decoder<R> {
+impl<R: Reader> rustc_serialize::Decoder for Decoder<R> {
     type Error = IoError;
 
     #[inline(always)]
@@ -269,7 +269,7 @@ impl<R: Reader> serialize::Decoder for Decoder<R> {
     fn read_u64(&mut self) -> IoResult<u64> { self._read_unsigned() }
 
     #[inline(always)]
-    fn read_uint(&mut self) -> IoResult<usize> {
+    fn read_usize(&mut self) -> IoResult<usize> {
         match try!(self._read_unsigned()).to_uint() {
             Some(i) => Ok(i),
             None    => Err(_invalid_input("value does not fit inside usize"))
@@ -306,7 +306,7 @@ impl<R: Reader> serialize::Decoder for Decoder<R> {
     }
 
     #[inline(always)]
-    fn read_int(&mut self) -> IoResult<isize> {
+    fn read_isize(&mut self) -> IoResult<isize> {
         match try!(self._read_signed()).to_int() {
             Some(i) => Ok(i),
             None    => Err(_invalid_input("value does not fit inside isize"))
@@ -521,7 +521,7 @@ impl<R: Reader> serialize::Decoder for Decoder<R> {
 }
 
 #[cfg(todo)]
-impl serialize::Decodable for Value {
+impl rustc_serialize::Decodable for Value {
     fn decode<D, R: Reader>(s: &mut D) -> Result<Self, D::Error> 
         where D: Decoder<R> {
         s.decode_value()
@@ -651,13 +651,13 @@ impl<'a> Encoder<'a> {
     }
 }
 
-impl<'a> serialize::Encoder for Encoder<'a> {
+impl<'a> rustc_serialize::Encoder for Encoder<'a> {
     type Error = IoError;
 
     fn emit_nil(&mut self) -> IoResult<()> { self.wr.write_u8(0xc0) }
 
     #[inline(always)]
-    fn emit_uint(&mut self, v: usize) -> IoResult<()> { self._emit_unsigned(v as u64) }
+    fn emit_usize(&mut self, v: usize) -> IoResult<()> { self._emit_unsigned(v as u64) }
     #[inline(always)]
     fn emit_u64(&mut self, v: u64) -> IoResult<()>   { self._emit_unsigned(v as u64) }
     #[inline(always)]
@@ -668,7 +668,7 @@ impl<'a> serialize::Encoder for Encoder<'a> {
     fn emit_u8(&mut self, v: u8) -> IoResult<()>     { self._emit_unsigned(v as u64) }
 
     #[inline(always)]
-    fn emit_int(&mut self, v: isize) -> IoResult<()>  { self._emit_signed(v as i64) }
+    fn emit_isize(&mut self, v: isize) -> IoResult<()>  { self._emit_signed(v as i64) }
     #[inline(always)]
     fn emit_i64(&mut self, v: i64) -> IoResult<()>  { self._emit_signed(v as i64) }
     #[inline(always)]
@@ -807,7 +807,7 @@ impl<'a> serialize::Encoder for Encoder<'a> {
 }
 
 #[cfg(todo)]
-impl<E: serialize::Encoder<S>, S> serialize::Encodable<E, S> for Value {
+impl<E: rustc_serialize::Encoder<S>, S> rustc_serialize::Encodable<E, S> for Value {
     fn encode(&self, e: &mut E) -> Result<(), S> {
         match *self {
             Value::Nil => e.emit_nil(),
@@ -852,7 +852,7 @@ pub fn from_msgpack<'a, T: Decodable>(bytes: &'a [u8]) -> IoResult<T> {
 mod test {
     use std::collections::HashMap;
     use super::{Encoder, from_msgpack};
-    use serialize::Encodable;
+    use rustc_serialize::Encodable;
 
     macro_rules! assert_msgpack_circular(
         ($ty:ty, $inp:expr) => (
@@ -935,7 +935,7 @@ mod test {
       assert_msgpack_circular!(char, 'a');
     }
 
-    #[derive(Encodable,Decodable,PartialEq,Debug)]
+    #[derive(RustcEncodable,RustcDecodable,PartialEq,Debug)]
     struct S {
       f: u8,
       g: u16,
@@ -986,7 +986,7 @@ mod test {
         assert_msgpack_circular!(String, from_char(0x10000, 'a'));
     }
 
-    #[derive(Encodable,Decodable,PartialEq,Show)]
+    #[derive(RustcEncodable,RustcDecodable,PartialEq,Debug)]
     enum Animal {
         Dog,
         Frog(String, usize),

@@ -14,3 +14,6 @@ authors = [
     "Derek Chiang (Enchi Jiang)"
 ]
 license = "MIT/Apache-2.0"
+
+[dependencies]
+rustc-serialize = "*"
