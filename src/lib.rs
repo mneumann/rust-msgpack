@@ -429,7 +429,6 @@ impl<R: Reader> serialize::Decoder for Decoder<R> {
     #[inline(always)]
     fn read_struct<T,F>(&mut self, _name: &str, len: usize, f: F) -> IoResult<T> 
     where F: FnOnce(&mut Decoder<R>) -> IoResult<T> {
-        // XXX: Why are we using a map length here?
         if len != try!(self._read_map_len()) {
             Err(_invalid_input("invalid length for struct"))
         } else {
@@ -438,9 +437,13 @@ impl<R: Reader> serialize::Decoder for Decoder<R> {
     }
 
     #[inline(always)]
-    fn read_struct_field<T,F>(&mut self, _name: &str, _idx: usize, f: F) -> IoResult<T> 
+    fn read_struct_field<T,F>(&mut self, name: &str, _idx: usize, f: F) -> IoResult<T>
     where F: FnOnce(&mut Decoder<R>) -> IoResult<T> {
-        f(self)
+        if name != try!(self.read_str()) {
+            Err(_invalid_input("struct field name mismatch"))
+        } else {
+            f(self)
+        }
     }
 
     fn read_option<T,F>(&mut self, mut f: F) -> IoResult<T>
@@ -732,15 +735,15 @@ impl<'a> serialize::Encoder for Encoder<'a> {
 
     // TODO: Option, to enable different ways to write out structs
     //       For example, to emit structs as maps/vectors.
-    // XXX: Correct to use _emit_map_len here?
     fn emit_struct<F>(&mut self, _name: &str, len: usize, f: F)  -> IoResult<()> 
     where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> {
         try!(self._emit_map_len(len));
         f(self)
     }
 
-    fn emit_struct_field<F>(&mut self, _name: &str, _idx: usize, f: F)  -> IoResult<()> 
+    fn emit_struct_field<F>(&mut self, name: &str, _idx: usize, f: F)  -> IoResult<()>
     where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> {
+        try!(self.emit_str(name));
         f(self)
     }
 
