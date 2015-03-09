@@ -861,6 +861,17 @@ mod test {
         );
     );
 
+    macro_rules! assert_msgpack_reference(
+        ($ty:ty, $inp:expr, $ref_bytes:expr) => (
+            {
+                let bytes = Encoder::to_msgpack(&$inp).unwrap();
+                assert_eq!($ref_bytes, bytes);
+                let value: $ty = from_msgpack($ref_bytes).unwrap();
+                assert_eq!($inp, value)
+            }
+        );
+    );
+
     #[test]
     fn test_circular_str() {
       assert_msgpack_circular!(String, "".to_string());
@@ -941,6 +952,19 @@ mod test {
       let s = vec![s1, s2];
 
       assert_msgpack_circular!(Vec<S>, s);
+    }
+
+    #[derive(Encodable,Decodable,PartialEq,Debug)]
+    struct R {
+      compact: bool,
+      schema: u8,
+    }
+
+    #[test]
+    fn test_reference_struct() {
+        let r1 = R { compact: true, schema: 0 };
+        let ref_bytes = [130, 167, 99, 111, 109, 112, 97, 99, 116, 195, 166, 115, 99, 104, 101, 109, 97, 0];
+        assert_msgpack_reference!(R, r1, &ref_bytes);
     }
 
     #[test]
