@@ -408,26 +408,26 @@ impl<R: Reader> rustc_serialize::Decoder for Decoder<R> {
 
         f(self, idx)
     }
-    fn read_enum_variant_arg<T,F>(&mut self, _idx: usize, f: F) -> IoResult<T> 
+    fn read_enum_variant_arg<T,F>(&mut self, _idx: usize, f: F) -> IoResult<T>
     where F: FnOnce(&mut Decoder<R>) -> IoResult<T> {
         f(self)
     }
 
     #[inline(always)]
-    fn read_seq<T,F>(&mut self, f: F) -> IoResult<T> 
+    fn read_seq<T,F>(&mut self, f: F) -> IoResult<T>
     where F: FnOnce(&mut Decoder<R>, usize) -> IoResult<T> {
         let len = try!(self._read_vec_len());
         f(self, len)
     }
 
     #[inline(always)]
-    fn read_seq_elt<T,F>(&mut self, _idx: usize, f: F) -> IoResult<T> 
+    fn read_seq_elt<T,F>(&mut self, _idx: usize, f: F) -> IoResult<T>
     where F: FnOnce(&mut Decoder<R>) -> IoResult<T> {
         f(self)
     }
 
     #[inline(always)]
-    fn read_struct<T,F>(&mut self, _name: &str, len: usize, f: F) -> IoResult<T> 
+    fn read_struct<T,F>(&mut self, _name: &str, len: usize, f: F) -> IoResult<T>
     where F: FnOnce(&mut Decoder<R>) -> IoResult<T> {
         if len != try!(self._read_map_len()) {
             Err(_invalid_input("invalid length for struct"))
@@ -454,16 +454,16 @@ impl<R: Reader> rustc_serialize::Decoder for Decoder<R> {
         }
     }
 
-    fn read_map<T,F>(&mut self, f: F) -> IoResult<T> 
+    fn read_map<T,F>(&mut self, f: F) -> IoResult<T>
     where F: FnOnce(&mut Decoder<R>, usize) -> IoResult<T> {
         let len = try!(self._read_map_len());
         f(self, len)
     }
 
-    fn read_map_elt_key<T,F>(&mut self, _idx: usize, f: F) -> IoResult<T> 
+    fn read_map_elt_key<T,F>(&mut self, _idx: usize, f: F) -> IoResult<T>
     where F: FnOnce(&mut Decoder<R>) -> IoResult<T> { f(self) }
 
-    fn read_map_elt_val<T,F>(&mut self, _idx: usize, f: F) -> IoResult<T> 
+    fn read_map_elt_val<T,F>(&mut self, _idx: usize, f: F) -> IoResult<T>
     where F: FnOnce(&mut Decoder<R>) -> IoResult<T> { f(self) }
 
 
@@ -477,14 +477,14 @@ impl<R: Reader> rustc_serialize::Decoder for Decoder<R> {
     fn read_enum_struct_variant_field<T,F>(&mut self,
                                            _name: &str,
                                            idx: usize,
-                                           f: F) -> IoResult<T> 
+                                           f: F) -> IoResult<T>
     where F: FnOnce(&mut Decoder<R>) -> IoResult<T> {
 
         self.read_enum_variant_arg(idx, f)
-        
+
     }
 
-    fn read_tuple<T,F>(&mut self, exp_len: usize, f: F) -> IoResult<T> 
+    fn read_tuple<T,F>(&mut self, exp_len: usize, f: F) -> IoResult<T>
     where F: FnOnce(&mut Decoder<R>) -> IoResult<T> {
         let len = try!(self._read_vec_len());
         if exp_len == len {
@@ -494,14 +494,14 @@ impl<R: Reader> rustc_serialize::Decoder for Decoder<R> {
         }
     }
 
-    fn read_tuple_arg<T,F>(&mut self, idx: usize, f: F) -> IoResult<T> 
+    fn read_tuple_arg<T,F>(&mut self, idx: usize, f: F) -> IoResult<T>
     where F: FnOnce(&mut Decoder<R>) -> IoResult<T> {
         self.read_seq_elt(idx, f)
     }
 
     fn read_tuple_struct<T,F>(&mut self,
                             _name: &str, len: usize,
-                            f: F) -> IoResult<T> 
+                            f: F) -> IoResult<T>
     where F: FnOnce(&mut Decoder<R>) -> IoResult<T> {
 
         self.read_tuple(len, f)
@@ -509,7 +509,7 @@ impl<R: Reader> rustc_serialize::Decoder for Decoder<R> {
 
     fn read_tuple_struct_arg<T,F>(&mut self,
                                 idx: usize,
-                                f: F) -> IoResult<T> 
+                                f: F) -> IoResult<T>
     where F: FnOnce(&mut Decoder<R>) -> IoResult<T> {
 
         self.read_tuple_arg(idx, f)
@@ -522,7 +522,7 @@ impl<R: Reader> rustc_serialize::Decoder for Decoder<R> {
 
 #[cfg(todo)]
 impl rustc_serialize::Decodable for Value {
-    fn decode<D, R: Reader>(s: &mut D) -> Result<Self, D::Error> 
+    fn decode<D, R: Reader>(s: &mut D) -> Result<Self, D::Error>
         where D: Decoder<R> {
         s.decode_value()
     }
@@ -707,35 +707,35 @@ impl<'a> rustc_serialize::Encoder for Encoder<'a> {
         self.wr.write_all(v.as_bytes())
     }
 
-    fn emit_enum<F>(&mut self, _name: &str, f: F) -> IoResult<()> 
+    fn emit_enum<F>(&mut self, _name: &str, f: F) -> IoResult<()>
     where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> {
         f(self)
     }
 
-    fn emit_enum_variant<F>(&mut self, name: &str, _id: usize, cnt: usize, f: F) -> IoResult<()> 
+    fn emit_enum_variant<F>(&mut self, name: &str, _id: usize, cnt: usize, f: F) -> IoResult<()>
     where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> {
         self.emit_seq(cnt + 1, |d| { d.emit_str(name) });
         f(self)
     }
 
-    fn emit_enum_variant_arg<F>(&mut self, _idx: usize, f: F) -> IoResult<()> 
+    fn emit_enum_variant_arg<F>(&mut self, _idx: usize, f: F) -> IoResult<()>
     where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> {
         f(self)
     }
 
-    fn emit_enum_struct_variant<F>(&mut self, name: &str, id: usize, cnt: usize, f: F) -> IoResult<()> 
+    fn emit_enum_struct_variant<F>(&mut self, name: &str, id: usize, cnt: usize, f: F) -> IoResult<()>
     where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> {
         self.emit_enum_variant(name, id, cnt, f)
     }
 
-    fn emit_enum_struct_variant_field<F>(&mut self, _name: &str, idx: usize, f: F)  -> IoResult<()> 
+    fn emit_enum_struct_variant_field<F>(&mut self, _name: &str, idx: usize, f: F)  -> IoResult<()>
     where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> {
         self.emit_enum_variant_arg(idx, f)
     }
 
     // TODO: Option, to enable different ways to write out structs
     //       For example, to emit structs as maps/vectors.
-    fn emit_struct<F>(&mut self, _name: &str, len: usize, f: F)  -> IoResult<()> 
+    fn emit_struct<F>(&mut self, _name: &str, len: usize, f: F)  -> IoResult<()>
     where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> {
         try!(self._emit_map_len(len));
         f(self)
@@ -747,12 +747,12 @@ impl<'a> rustc_serialize::Encoder for Encoder<'a> {
         f(self)
     }
 
-    fn emit_tuple<F>(&mut self, len: usize, f: F) -> IoResult<()> 
+    fn emit_tuple<F>(&mut self, len: usize, f: F) -> IoResult<()>
     where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> {
         self.emit_seq(len, f)
     }
 
-    fn emit_tuple_arg<F>(&mut self, idx: usize, f: F) -> IoResult<()> 
+    fn emit_tuple_arg<F>(&mut self, idx: usize, f: F) -> IoResult<()>
     where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> {
         self.emit_seq_elt(idx, f)
     }
@@ -760,47 +760,47 @@ impl<'a> rustc_serialize::Encoder for Encoder<'a> {
     fn emit_tuple_struct<F>(&mut self,
                          _name: &str,
                          len: usize,
-                         f: F) -> IoResult<()> 
+                         f: F) -> IoResult<()>
     where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> {
         self.emit_seq(len, f)
     }
 
-    fn emit_tuple_struct_arg<F>(&mut self, idx: usize, f: F) -> IoResult<()> 
+    fn emit_tuple_struct_arg<F>(&mut self, idx: usize, f: F) -> IoResult<()>
     where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> {
         self.emit_seq_elt(idx, f)
     }
 
-    fn emit_option<F>(&mut self, f: F) -> IoResult<()> 
+    fn emit_option<F>(&mut self, f: F) -> IoResult<()>
     where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> { f(self) }
 
     fn emit_option_none(&mut self) -> IoResult<()>  { self.emit_nil() }
 
-    fn emit_option_some<F>(&mut self, f: F) -> IoResult<()> 
+    fn emit_option_some<F>(&mut self, f: F) -> IoResult<()>
     where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> { f(self) }
 
-    fn emit_seq<F>(&mut self, len: usize, f: F) -> IoResult<()> 
+    fn emit_seq<F>(&mut self, len: usize, f: F) -> IoResult<()>
     where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> {
         try!(self._emit_array_len(len));
         f(self)
     }
 
-    fn emit_seq_elt<F>(&mut self, _idx: usize, f: F) -> IoResult<()> 
+    fn emit_seq_elt<F>(&mut self, _idx: usize, f: F) -> IoResult<()>
     where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> {
         f(self)
     }
 
-    fn emit_map<F>(&mut self, len: usize, f: F) -> IoResult<()> 
+    fn emit_map<F>(&mut self, len: usize, f: F) -> IoResult<()>
      where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> {
         try!(self._emit_map_len(len));
         f(self)
     }
 
-    fn emit_map_elt_key<F>(&mut self, _idx: usize, f: F) -> IoResult<()> 
+    fn emit_map_elt_key<F>(&mut self, _idx: usize, f: F) -> IoResult<()>
     where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> {
         f(self)
     }
 
-    fn emit_map_elt_val<F>(&mut self, _idx: usize, f: F) -> IoResult<()> 
+    fn emit_map_elt_val<F>(&mut self, _idx: usize, f: F) -> IoResult<()>
     where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> {
         f(self)
     }
