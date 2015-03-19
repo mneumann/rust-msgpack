@@ -957,7 +957,7 @@ mod test {
       assert_msgpack_circular!(Vec<S>, s);
     }
 
-    #[derive(Encodable,Decodable,PartialEq,Debug)]
+    #[derive(RustcEncodable,RustcDecodable,PartialEq,Debug)]
     struct R {
       compact: bool,
       schema: u8,
