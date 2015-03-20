@@ -1,7 +1,6 @@
 //! msgpack.org implementation for Rust
 
 #![crate_type = "lib"]
-#![allow(unused_must_use, dead_code)]
 #![feature(io, core)]
 
 extern crate "rustc-serialize" as rustc_serialize;
