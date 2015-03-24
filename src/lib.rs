@@ -1,11 +1,11 @@
 //! msgpack.org implementation for Rust
 
 #![crate_type = "lib"]
-#![feature(io, core)]
+#![feature(old_io, core)]
 
-extern crate "rustc-serialize" as rustc_serialize;
+extern crate rustc_serialize;
 
-use std::old_io::{BufReader, MemWriter, IoResult, IoError, InvalidInput};
+use std::old_io::{BufReader, InvalidInput, IoError, IoResult, MemWriter, Reader, Writer};
 use std::str::from_utf8;
 use std::mem;
 use std::num::ToPrimitive;
@@ -366,7 +366,7 @@ impl<R: Reader> rustc_serialize::Decoder for Decoder<R> {
     fn read_char(&mut self) -> IoResult<char> {
         let s = try!(self.read_str());
         if s.len() != 1 { return Err(_invalid_input("invalid char")) }
-        Ok(s.as_slice().chars().next().unwrap())
+        Ok(s.chars().next().unwrap())
     }
 
     #[inline(always)]
@@ -399,7 +399,7 @@ impl<R: Reader> rustc_serialize::Decoder for Decoder<R> {
     where F: FnMut(&mut Decoder<R>, usize) -> IoResult<T> {
         let idx = try!(self.read_seq(|d, _len| {
             let name = try!(d.read_str());
-            match names.iter().position(|n| name.as_slice() == *n) {
+            match names.iter().position(|n| &name[..] == *n) {
                 Some(idx) => Ok(idx),
                 None => { Err(_invalid_input("unknown variant")) },
             }
@@ -698,7 +698,7 @@ impl<'a> rustc_serialize::Encoder for Encoder<'a> {
     fn emit_char(&mut self, v: char)  -> IoResult<()> {
         let mut s = String::with_capacity(1);
         s.push(v);
-        self.emit_str(s.as_slice())
+        self.emit_str(&s)
     }
 
     fn emit_str(&mut self, v: &str) -> IoResult<()> {
@@ -832,7 +832,7 @@ impl<E: rustc_serialize::Encoder<S>, S> rustc_serialize::Encodable<E, S> for Val
                     Ok(())
                 })
             }
-            Value::Str(ref str) => e.emit_str(from_utf8(str.as_slice()).unwrap()), // XXX
+            Value::Str(ref str) => e.emit_str(from_utf8(str).unwrap()), // XXX
             Value::Binary(_) => panic!(), // XXX
             Value::Extended(_, _) => panic!() // XXX
         }
@@ -857,7 +857,7 @@ mod test {
         ($ty:ty, $inp:expr) => (
             {
                 let bytes = Encoder::to_msgpack(&$inp).unwrap();
-                let value: $ty = from_msgpack(bytes.as_slice()).unwrap();
+                let value: $ty = from_msgpack(&bytes[..]).unwrap();
                 assert_eq!($inp, value)
             }
         );
@@ -867,7 +867,7 @@ mod test {
         ($ty:ty, $inp:expr, $ref_bytes:expr) => (
             {
                 let bytes = Encoder::to_msgpack(&$inp).unwrap();
-                assert_eq!($ref_bytes, bytes);
+                assert_eq!($ref_bytes, &bytes[..]);
                 let value: $ty = from_msgpack($ref_bytes).unwrap();
                 assert_eq!($inp, value)
             }
@@ -883,8 +883,8 @@ mod test {
 
     #[test]
     fn test_circular_isize() {
-      assert_msgpack_circular!(isize, 123is);
-      assert_msgpack_circular!(isize, -123is);
+      assert_msgpack_circular!(isize, 123isize);
+      assert_msgpack_circular!(isize, -123isize);
     }
 
     #[test]
@@ -906,8 +906,8 @@ mod test {
     #[test]
     fn test_circular_map() {
       let mut v = HashMap::new();
-      v.insert(1is, 2is);
-      v.insert(3is, 4is);
+      v.insert(1isize, 2isize);
+      v.insert(3isize, 4isize);
       assert_msgpack_circular!(HashMap<isize, isize>, v);
     }
 
