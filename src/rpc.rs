@@ -12,13 +12,13 @@ impl Encodable for RpcMessage {
   fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
     match *self {
       RpcMessage::RpcRequest {msgid, ref method, ref params} => {
-        (0us, msgid, method, params).encode(s)
+        (0usize, msgid, method, params).encode(s)
       }
       RpcMessage::RpcResponse {msgid, ref error, ref result} => {
-        (1us, msgid, error, result).encode(s)
+        (1usize, msgid, error, result).encode(s)
       }
       RpcMessage::RpcNotification {ref method, ref params} => {
-        (2us, method, params).encode(s)
+        (2usize, method, params).encode(s)
       }
     }
   }
