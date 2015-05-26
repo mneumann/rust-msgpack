@@ -4,10 +4,12 @@
 #![feature(old_io, core)]
 
 extern crate rustc_serialize;
+extern crate byteorder;
 
 use std::io;
 use std::io::{BufReader, Read, Write, Error};
 use std::io::ErrorKind;
+use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use std::str::from_utf8;
 use std::mem;
 
@@ -33,12 +35,12 @@ pub enum Value {
 
 #[inline(always)]
 fn read_float(rd: &mut Read) -> io::Result<f32> {
-    rd.read_be_u32().map(|v| unsafe { mem::transmute(v) })
+    rd.read_u32::<BigEndian>().map(|v| unsafe { mem::transmute(v) })
 }
 
 #[inline(always)]
 fn read_double(rd: &mut Read) -> io::Result<f64> {
-    rd.read_be_u64().map(|v| unsafe { mem::transmute(v) })
+    rd.read_u64::<BigEndian>().map(|v| unsafe { mem::transmute(v) })
 }
 
 pub fn _invalid_input(s: &'static str) -> Error {
@@ -67,7 +69,7 @@ impl<'a, R: Read> Decoder<R> {
         match self.next_byte {
             Some(byte) => Ok(byte),
             None => {
-                match self.rd.read_byte() {
+                match self.rd.read_u8() {
                     Ok(byte) => {
                         self.next_byte = Some(byte);
                         Ok(byte)
@@ -86,7 +88,7 @@ impl<'a, R: Read> Decoder<R> {
                 Ok(byte)
             }
             None => {
-                self.rd.read_byte()
+                self.rd.read_u8()
             }
         }
     }
@@ -96,9 +98,9 @@ impl<'a, R: Read> Decoder<R> {
         match c {
             0x00 ... 0x7f => Ok(c as u64),
             0xcc         => Ok(try!(self.rd.read_u8()) as u64),
-            0xcd         => Ok(try!(self.rd.read_be_u16()) as u64),
-            0xce         => Ok(try!(self.rd.read_be_u32()) as u64),
-            0xcf         => self.rd.read_be_u64(),
+            0xcd         => Ok(try!(self.rd.read_u16::<BigEndian>()) as u64),
+            0xce         => Ok(try!(self.rd.read_u32::<BigEndian>()) as u64),
+            0xcf         => self.rd.read_u64::<BigEndian>(),
             _            => Err(_invalid_input("No unsigned integer"))
         }
     }
@@ -107,9 +109,9 @@ impl<'a, R: Read> Decoder<R> {
         let c = try!(self._read_byte());
         match c {
             0xd0         => Ok(try!(self.rd.read_i8()) as i64),
-            0xd1         => Ok(try!(self.rd.read_be_i16()) as i64),
-            0xd2         => Ok(try!(self.rd.read_be_i32()) as i64),
-            0xd3         => self.rd.read_be_i64(),
+            0xd1         => Ok(try!(self.rd.read_i16::<BigEndian>()) as i64),
+            0xd2         => Ok(try!(self.rd.read_i32::<BigEndian>()) as i64),
+            0xd3         => self.rd.read_i64::<BigEndian>(),
             0xe0 ... 0xff => Ok((c as i8) as i64),
             _            => Err(_invalid_input("No signed integer"))
         }
@@ -131,8 +133,8 @@ impl<'a, R: Read> Decoder<R> {
 
         match c {
             0x90 ... 0x9f => Ok((c as usize) & 0x0F),
-            0xdc         => self.rd.read_be_u16().map(|i| i as usize),
-            0xdd         => self.rd.read_be_u32().map(|i| i as usize),
+            0xdc         => self.rd.read_u16::<BigEndian>().map(|i| i as usize),
+            0xdd         => self.rd.read_u32::<BigEndian>().map(|i| i as usize),
             _            => Err(_invalid_input("Invalid byte code in _read_vec_len"))
         }
     }
@@ -141,8 +143,8 @@ impl<'a, R: Read> Decoder<R> {
         let c = try!(self._read_byte());
         match c {
             0x80 ... 0x8f => Ok((c as usize) & 0x0F),
-            0xde         => self.rd.read_be_u16().map(|i| i as usize),
-            0xdf         => self.rd.read_be_u32().map(|i| i as usize),
+            0xde         => self.rd.read_u16::<BigEndian>().map(|i| i as usize),
+            0xdf         => self.rd.read_u32::<BigEndian>().map(|i| i as usize),
             _            => Err(_invalid_input("Invalid byte code in _read_map_len"))
         }
     }
@@ -185,14 +187,14 @@ impl<'a, R: Read> Decoder<R> {
 
             0x00 ... 0x7f => Ok(Value::Unsigned(c as u64)),
             0xcc         => self.rd.read_u8().map(|i| Value::Unsigned(i as u64)),
-            0xcd         => self.rd.read_be_u16().map(|i| Value::Unsigned(i as u64)),
-            0xce         => self.rd.read_be_u32().map(|i| Value::Unsigned(i as u64)),
-            0xcf         => self.rd.read_be_u64().map(|i| Value::Unsigned(i)),
+            0xcd         => self.rd.read_u16::<BigEndian>().map(|i| Value::Unsigned(i as u64)),
+            0xce         => self.rd.read_u32::<BigEndian>().map(|i| Value::Unsigned(i as u64)),
+            0xcf         => self.rd.read_u64::<BigEndian>().map(|i| Value::Unsigned(i)),
 
             0xd0         => self.rd.read_i8().map(|i| Value::Integer(i as i64)),
-            0xd1         => self.rd.read_be_i16().map(|i| Value::Integer(i as i64)),
-            0xd2         => self.rd.read_be_i32().map(|i| Value::Integer(i as i64)),
-            0xd3         => self.rd.read_be_i64().map(|i| Value::Integer(i)),
+            0xd1         => self.rd.read_i16::<BigEndian>().map(|i| Value::Integer(i as i64)),
+            0xd2         => self.rd.read_i32::<BigEndian>().map(|i| Value::Integer(i as i64)),
+            0xd3         => self.rd.read_i64::<BigEndian>().map(|i| Value::Integer(i)),
             0xe0 ... 0xff => Ok(Value::Integer((c as i8) as i64)),
 
             0xca         => read_float(&mut self.rd).map(|i| Value::Float(i)),
@@ -204,11 +206,11 @@ impl<'a, R: Read> Decoder<R> {
                 self._read_raw(l).map(|i| Value::Str(i))
             }
             0xda         => {
-                let l = try!(self.rd.read_be_u16()) as usize;
+                let l = try!(self.rd.read_u16::<BigEndian>()) as usize;
                 self._read_raw(l).map(|i| Value::Str(i))
             }
             0xdb         => {
-                let l = try!(self.rd.read_be_u32()) as usize;
+                let l = try!(self.rd.read_u32::<BigEndian>()) as usize;
                 self._read_raw(l).map(|i| Value::Str(i))
             }
 
@@ -218,23 +220,23 @@ impl<'a, R: Read> Decoder<R> {
             }
 
             0xc5         => {
-                let l = try!(self.rd.read_be_u16()) as usize;
+                let l = try!(self.rd.read_u16::<BigEndian>()) as usize;
                 self._read_raw(l).map(|i| Value::Binary(i))
             }
 
 
             0xc6         => {
-                let l = try!(self.rd.read_be_u32()) as usize;
+                let l = try!(self.rd.read_u32::<BigEndian>()) as usize;
                 self._read_raw(l).map(|i| Value::Binary(i))
             }
 
             0x90 ... 0x9f => self.decode_array((c as usize) & 0x0F),
-            0xdc         => { let l = try!(self.rd.read_be_u16()) as usize; self.decode_array(l) },
-            0xdd         => { let l = try!(self.rd.read_be_u32()) as usize; self.decode_array(l) },
+            0xdc         => { let l = try!(self.rd.read_u16::<BigEndian>()) as usize; self.decode_array(l) },
+            0xdd         => { let l = try!(self.rd.read_u32::<BigEndian>()) as usize; self.decode_array(l) },
 
             0x80 ... 0x8f => self.decode_map((c as usize) & 0x0F),
-            0xde         => { let l = try!(self.rd.read_be_u16()) as usize; self.decode_map(l) },
-            0xdf         => { let l = try!(self.rd.read_be_u32()) as usize; self.decode_map(l) },
+            0xde         => { let l = try!(self.rd.read_u16::<BigEndian>()) as usize; self.decode_map(l) },
+            0xdf         => { let l = try!(self.rd.read_u32::<BigEndian>()) as usize; self.decode_map(l) },
 
             0xd4         => self.decode_ext(1),
             0xd5         => self.decode_ext(2),
@@ -242,8 +244,8 @@ impl<'a, R: Read> Decoder<R> {
             0xd7         => self.decode_ext(8),
             0xd8         => self.decode_ext(16),
             0xc7         => { let l = try!(self.rd.read_u8()) as usize; self.decode_ext(l) },
-            0xc8         => { let l = try!(self.rd.read_be_u16()) as usize; self.decode_ext(l) },
-            0xc9         => { let l = try!(self.rd.read_be_u32()) as usize; self.decode_ext(l) },
+            0xc8         => { let l = try!(self.rd.read_u16::<BigEndian>()) as usize; self.decode_ext(l) },
+            0xc9         => { let l = try!(self.rd.read_u32::<BigEndian>()) as usize; self.decode_ext(l) },
 
             // XXX: This is only here to satify Rust's pattern checker.
             _            => unreachable!()
@@ -380,11 +382,11 @@ impl<R: Read> rustc_serialize::Decoder for Decoder<R> {
                 self._read_str(l)
             },
             0xda         => {
-                let l = try!(self.rd.read_be_u16()) as usize;
+                let l = try!(self.rd.read_u16::<BigEndian>()) as usize;
                 self._read_str(l)
             },
             0xdb         => {
-                let l = try!(self.rd.read_be_u32()) as usize;
+                let l = try!(self.rd.read_u32::<BigEndian>()) as usize;
                 self._read_str(l)
             },
             _            => Err(_invalid_input("Invalid string"))
@@ -561,15 +563,15 @@ impl<'a> Encoder<'a> {
         }
         else if v <= std::u16::MAX as u64 {
             try!(self.wr.write_u8(0xcd));
-            try!(self.wr.write_be_u16(v as u16));
+            try!(self.wr.write_u16::<BigEndian>(v as u16));
         }
         else if v <= std::u32::MAX as u64 {
             try!(self.wr.write_u8(0xce));
-            try!(self.wr.write_be_u32(v as u32));
+            try!(self.wr.write_u32::<BigEndian>(v as u32));
         }
         else {
             try!(self.wr.write_u8(0xcf));
-            try!(self.wr.write_be_u64(v));
+            try!(self.wr.write_u64::<BigEndian>(v));
         }
 
         Ok(())
@@ -587,16 +589,16 @@ impl<'a> Encoder<'a> {
         else if v >= std::i16::MIN as i64 && v <= std::i16::MAX as i64 {
             let v = v as i16;
             try!(self.wr.write_u8(0xd1));
-            try!(self.wr.write_be_i16(v));
+            try!(self.wr.write_i16::<BigEndian>(v));
         }
         else if v >= std::i32::MIN as i64 && v <= std::i32::MAX as i64 {
             let v = v as i32;
             try!(self.wr.write_u8(0xd2));
-            try!(self.wr.write_be_i32(v));
+            try!(self.wr.write_i32::<BigEndian>(v));
         }
         else {
             try!(self.wr.write_u8(0xd3));
-            try!(self.wr.write_be_i64(v));
+            try!(self.wr.write_i64::<BigEndian>(v));
         }
 
         Ok(())
@@ -611,11 +613,11 @@ impl<'a> Encoder<'a> {
             try!(self.wr.write_u8(len as u8));
         } else if len <= std::u16::MAX as usize {
             try!(self.wr.write_u8(op3));
-            try!(self.wr.write_be_u16(len as u16));
+            try!(self.wr.write_u16::<BigEndian>(len as u16));
         } else {
             assert!(len <= std::u32::MAX as usize); // XXX
             try!(self.wr.write_u8(op4));
-            try!(self.wr.write_be_u32(len as u32));
+            try!(self.wr.write_u32::<BigEndian>(len as u32));
         }
 
         Ok(())
@@ -680,12 +682,12 @@ impl<'a> rustc_serialize::Encoder for Encoder<'a> {
 
     fn emit_f64(&mut self, v: f64) -> io::Result<()> {
         try!(self.wr.write_u8(0xcb));
-        unsafe { self.wr.write_be_u64(mem::transmute(v)) }
+        unsafe { self.wr.write_u64::<BigEndian>(mem::transmute(v)) }
     }
 
     fn emit_f32(&mut self, v: f32) -> io::Result<()> {
         try!(self.wr.write_u8(0xca));
-        unsafe { self.wr.write_be_u32(mem::transmute(v)) }
+        unsafe { self.wr.write_u32::<BigEndian>(mem::transmute(v)) }
     }
 
     fn emit_bool(&mut self, v: bool) -> io::Result<()> {
