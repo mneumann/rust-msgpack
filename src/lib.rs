@@ -15,7 +15,7 @@ use std::mem;
 
 use rustc_serialize::{Encodable, Decodable};
 
-type MsgpackResult<T> = Result<T, byteorder::Error>;
+pub type MsgpackResult<T> = Result<T, byteorder::Error>;
 
 #[cfg(todo)]
 mod rpc;
