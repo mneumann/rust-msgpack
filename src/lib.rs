@@ -717,7 +717,11 @@ impl<'a> rustc_serialize::Encoder for Encoder<'a> {
 
     fn emit_str(&mut self, v: &str) -> MsgpackResult<()> {
         try!(self._emit_str_len(v.len()));
-        self.wr.write_all(v.as_bytes())
+        // XXX There has to be a better way to do this...
+        match self.wr.write_all(v.as_bytes()) {
+            Ok(v) => Ok(v),
+            Err(e) => Err(byteorder::Error::Io(e))
+        }
     }
 
     fn emit_enum<F>(&mut self, _name: &str, f: F) -> MsgpackResult<()>
