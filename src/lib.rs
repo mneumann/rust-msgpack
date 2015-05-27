@@ -1,7 +1,6 @@
 //! msgpack.org implementation for Rust
 
 #![crate_type = "lib"]
-#![feature(old_io, core)]
 
 extern crate rustc_serialize;
 extern crate byteorder;
@@ -275,6 +274,35 @@ impl<'a, R: Read> Decoder<R> {
 
 }
 
+// Insipired by rust-serialize json code.
+macro_rules! read_uprimitive {
+    ($name:ident, $ty:ident) => {
+    #[inline(always)]
+        fn $name(&mut self) -> MsgpackResult<$ty> {
+            let v = try!(self._read_unsigned());
+            if v < std::$ty::MIN as u64 || v > std::$ty::MAX as u64 {
+                Err(_invalid_input("value does not fit inside $ty"))
+            } else {
+                Ok(v as $ty)
+            }
+        }
+    }
+}
+
+macro_rules! read_iprimitive {
+    ($name:ident, $ty:ident) => {
+    #[inline(always)]
+        fn $name(&mut self) -> MsgpackResult<$ty> {
+            let v = try!(self._read_signed());
+            if v < std::$ty::MIN as i64 || v > std::$ty::MAX as i64 {
+                Err(_invalid_input("value does not fit inside $ty"))
+            } else {
+                Ok(v as $ty)
+            }
+        }
+    }
+}
+
 impl<R: Read> rustc_serialize::Decoder for Decoder<R> {
     type Error = byteorder::Error;
 
@@ -290,80 +318,20 @@ impl<R: Read> rustc_serialize::Decoder for Decoder<R> {
     #[inline(always)]
     fn read_u64(&mut self) -> MsgpackResult<u64> { self._read_unsigned() }
 
-    #[inline(always)]
-    fn read_usize(&mut self) -> MsgpackResult<usize> {
-        // XXX Don't have to_uint.
-        let v = try!(self._read_unsigned());
-        if v < std::usize::MIN as u64 || v > std::usize::MAX as u64 {
-            Err(_invalid_input("value does not fit inside usize"))
-        } else {
-            Ok(v as usize)
-        }
-    }
-
-    #[inline(always)]
-    fn read_u32(&mut self) -> MsgpackResult<u32> {
-        match try!(self._read_unsigned()).to_u32() {
-            Some(i) => Ok(i),
-            None    => Err(_invalid_input("value does not fit inside u32"))
-        }
-    }
-
-    #[inline(always)]
-    fn read_u16(&mut self) -> MsgpackResult<u16> {
-        match try!(self._read_unsigned()).to_u16() {
-            Some(i) => Ok(i),
-            None    => Err(_invalid_input("value does not fit inside u16"))
-        }
-    }
-
-    #[inline(always)]
-    fn read_u8(&mut self) -> MsgpackResult<u8> {
-        match try!(self._read_unsigned()).to_u8() {
-            Some(i) => Ok(i),
-            None    => Err(_invalid_input("value does not fit inside u8"))
-        }
-    }
+    read_uprimitive! { read_usize, usize }
+    read_uprimitive! { read_u32, u32 }
+    read_uprimitive! { read_u16, u16 }
+    read_uprimitive! { read_u8, u8 }
 
     #[inline(always)]
     fn read_i64(&mut self) -> MsgpackResult<i64> {
         self._read_signed()
     }
 
-    #[inline(always)]
-    fn read_isize(&mut self) -> MsgpackResult<isize> {
-        // XXX Don't have to_int.
-        let v = try!(self._read_signed());
-        if v < std::isize::MIN as i64 || v > std::isize::MAX as i64 {
-            Err(_invalid_input("value does not fit inside isize"))
-        } else {
-            Ok(v as isize)
-        }
-    }
-
-    #[inline(always)]
-    fn read_i32(&mut self) -> MsgpackResult<i32> {
-        match try!(self._read_signed()).to_i32() {
-            Some(i) => Ok(i),
-            None    => Err(_invalid_input("value does not fit inside i32"))
-        }
-    }
-
-    #[inline(always)]
-    fn read_i16(&mut self) -> MsgpackResult<i16> {
-        match try!(self._read_signed()).to_i16() {
-            Some(i) => Ok(i),
-            None    => Err(_invalid_input("value does not fit inside i16"))
-        }
-    }
-
-    #[inline(always)]
-    fn read_i8(&mut self) -> MsgpackResult<i8> {
-        match try!(self._read_signed()).to_i8() {
-            Some(i) => Ok(i),
-            None    => Err(_invalid_input("value does not fit inside i8"))
-        }
-    }
+    read_iprimitive! { read_isize, isize }
+    read_iprimitive! { read_i32, i32 }
+    read_iprimitive! { read_i16, i16 }
+    read_iprimitive! { read_i8, i8 }
 
     #[inline(always)]
     fn read_bool(&mut self) -> MsgpackResult<bool> {
