@@ -121,11 +121,28 @@ impl<'a, R: Read> Decoder<R> {
     }
 
     fn _read_raw(&mut self, len: usize) -> MsgpackResult<Vec<u8>> {
-        self.rd.read_exact(len)
+        // XXX Don't have: self.rd.read_exact(len)
+        // XXX Should probably be optimized.
+
+        let mut vec = Vec::new();
+        let mut nread = 0;
+        let mut buf = [0; 1];
+        while nread < len {
+            match self.rd.read(&mut buf) {
+                Ok(0) => return Err(byteorder::Error::UnexpectedEOF),
+                Ok(n) => {
+                    nread += n;
+                    vec.push(buf[0]);
+                },
+                Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {},
+                Err(e) => return Err(From::from(e)),
+            }
+        }
+        Ok(vec)
     }
 
     fn _read_str(&mut self, len: usize) -> MsgpackResult<String> {
-        match String::from_utf8(try!(self.rd.read_exact(len))) {
+        match String::from_utf8(try!(self._read_raw(len))) {
             Ok(s)  => Ok(s),
             Err(_) => Err(_invalid_input("No UTF-8 string"))
         }
@@ -175,7 +192,7 @@ impl<'a, R: Read> Decoder<R> {
         if typ < 0 {
             return Err(_invalid_input("Reserved type"));
         }
-        Ok(Value::Extended(typ, try!(self.rd.read_exact(len))))
+        Ok(Value::Extended(typ, try!(self._read_raw(len))))
     }
 
     fn decode_value(&mut self) -> MsgpackResult<Value> {
