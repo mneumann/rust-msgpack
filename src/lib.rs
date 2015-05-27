@@ -275,9 +275,12 @@ impl<R: Read> rustc_serialize::Decoder for Decoder<R> {
 
     #[inline(always)]
     fn read_usize(&mut self) -> MsgpackResult<usize> {
-        match try!(self._read_unsigned()).to_uint() {
-            Some(i) => Ok(i),
-            None    => Err(_invalid_input("value does not fit inside usize"))
+        // XXX Don't have to_uint.
+        let v = try!(self._read_unsigned());
+        if v < std::usize::MIN as u64 || v > std::usize::MAX as u64 {
+            Err(_invalid_input("value does not fit inside usize"))
+        } else {
+            Ok(v as usize)
         }
     }
 
@@ -312,9 +315,12 @@ impl<R: Read> rustc_serialize::Decoder for Decoder<R> {
 
     #[inline(always)]
     fn read_isize(&mut self) -> MsgpackResult<isize> {
-        match try!(self._read_signed()).to_int() {
-            Some(i) => Ok(i),
-            None    => Err(_invalid_input("value does not fit inside isize"))
+        // XXX Don't have to_int.
+        let v = try!(self._read_signed());
+        if v < std::isize::MIN as i64 || v > std::isize::MAX as i64 {
+            Err(_invalid_input("value does not fit inside isize"))
+        } else {
+            Ok(v as isize)
         }
     }
 
