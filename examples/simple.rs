@@ -5,6 +5,6 @@ fn main() {
   let str = msgpack::Encoder::to_msgpack(&arr).ok().unwrap();
   println!("Encoded: {:?}", str);
 
-  let dec: Vec<String> = msgpack::from_msgpack(str.as_slice()).ok().unwrap();
+  let dec: Vec<String> = msgpack::from_msgpack(&str[..]).ok().unwrap();
   println!("Decoded: {:?}", dec);
 }

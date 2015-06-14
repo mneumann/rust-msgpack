@@ -1,17 +1,20 @@
 //! msgpack.org implementation for Rust
 
 #![crate_type = "lib"]
-#![allow(unused_must_use, dead_code)]
-#![feature(io, core, rustc_private)]
 
-extern crate serialize;
+extern crate rustc_serialize;
+extern crate byteorder;
 
-use std::old_io::{BufReader, MemWriter, IoResult, IoError, InvalidInput};
+use std::io;
+use std::io::{BufReader, Read, Write};
+use std::io::ErrorKind;
+use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use std::str::from_utf8;
 use std::mem;
-use std::num::ToPrimitive;
 
-use serialize::{Encodable, Decodable};
+use rustc_serialize::{Encodable, Decodable};
+
+pub type MsgpackResult<T> = Result<T, byteorder::Error>;
 
 #[cfg(todo)]
 mod rpc;
@@ -32,26 +35,27 @@ pub enum Value {
 }
 
 #[inline(always)]
-fn read_float(rd: &mut Reader) -> IoResult<f32> {
-    rd.read_be_u32().map(|v| unsafe { mem::transmute(v) })
+fn read_float(rd: &mut Read) -> MsgpackResult<f32> {
+    rd.read_u32::<BigEndian>().map(|v| unsafe { mem::transmute(v) })
 }
 
 #[inline(always)]
-fn read_double(rd: &mut Reader) -> IoResult<f64> {
-    rd.read_be_u64().map(|v| unsafe { mem::transmute(v) })
+fn read_double(rd: &mut Read) -> MsgpackResult<f64> {
+    rd.read_u64::<BigEndian>().map(|v| unsafe { mem::transmute(v) })
 }
 
-pub fn _invalid_input(s: &'static str) -> IoError {
-    IoError{kind: InvalidInput, desc: s, detail: None}
+pub fn _invalid_input(s: &'static str) -> byteorder::Error {
+    let err = io::Error::new(ErrorKind::InvalidInput, s);
+    byteorder::Error::Io(err)
 }
 
 /// A structure to decode Msgpack from a reader.
-pub struct Decoder<R: Reader> {
+pub struct Decoder<R: Read> {
     rd: R,
     next_byte: Option<u8>
 }
 
-impl<R: Reader> Decoder<R> {
+impl<R: Read> Decoder<R> {
     /// Creates a new Msgpack decoder for decoding from the
     /// specified reader.
     pub fn new(rd: R) -> Decoder<R> {
@@ -62,12 +66,12 @@ impl<R: Reader> Decoder<R> {
     }
 }
 
-impl<'a, R: Reader> Decoder<R> {
-    fn _peek_byte(&mut self) -> IoResult<u8> {
+impl<'a, R: Read> Decoder<R> {
+    fn _peek_byte(&mut self) -> MsgpackResult<u8> {
         match self.next_byte {
             Some(byte) => Ok(byte),
             None => {
-                match self.rd.read_byte() {
+                match self.rd.read_u8() {
                     Ok(byte) => {
                         self.next_byte = Some(byte);
                         Ok(byte)
@@ -79,75 +83,92 @@ impl<'a, R: Reader> Decoder<R> {
         }
     }
 
-    fn _read_byte(&mut self) -> IoResult<u8> {
+    fn _read_byte(&mut self) -> MsgpackResult<u8> {
         match self.next_byte {
             Some(byte) => {
                 self.next_byte = None;
                 Ok(byte)
             }
             None => {
-                self.rd.read_byte()
+                self.rd.read_u8()
             }
         }
     }
 
-    fn _read_unsigned(&mut self) -> IoResult<u64> {
+    fn _read_unsigned(&mut self) -> MsgpackResult<u64> {
         let c = try!(self._read_byte());
         match c {
             0x00 ... 0x7f => Ok(c as u64),
             0xcc         => Ok(try!(self.rd.read_u8()) as u64),
-            0xcd         => Ok(try!(self.rd.read_be_u16()) as u64),
-            0xce         => Ok(try!(self.rd.read_be_u32()) as u64),
-            0xcf         => self.rd.read_be_u64(),
+            0xcd         => Ok(try!(self.rd.read_u16::<BigEndian>()) as u64),
+            0xce         => Ok(try!(self.rd.read_u32::<BigEndian>()) as u64),
+            0xcf         => self.rd.read_u64::<BigEndian>(),
             _            => Err(_invalid_input("No unsigned integer"))
         }
     }
 
-    fn _read_signed(&mut self) -> IoResult<i64> {
+    fn _read_signed(&mut self) -> MsgpackResult<i64> {
         let c = try!(self._read_byte());
         match c {
             0xd0         => Ok(try!(self.rd.read_i8()) as i64),
-            0xd1         => Ok(try!(self.rd.read_be_i16()) as i64),
-            0xd2         => Ok(try!(self.rd.read_be_i32()) as i64),
-            0xd3         => self.rd.read_be_i64(),
+            0xd1         => Ok(try!(self.rd.read_i16::<BigEndian>()) as i64),
+            0xd2         => Ok(try!(self.rd.read_i32::<BigEndian>()) as i64),
+            0xd3         => self.rd.read_i64::<BigEndian>(),
             0xe0 ... 0xff => Ok((c as i8) as i64),
             _            => Err(_invalid_input("No signed integer"))
         }
     }
 
-    fn _read_raw(&mut self, len: usize) -> IoResult<Vec<u8>> {
-        self.rd.read_exact(len)
+    fn _read_raw(&mut self, len: usize) -> MsgpackResult<Vec<u8>> {
+        // XXX Don't have: self.rd.read_exact(len)
+        // XXX Should probably be optimized.
+
+        let mut vec = Vec::new();
+        let mut nread = 0;
+        let mut buf = [0; 1];
+        while nread < len {
+            match self.rd.read(&mut buf) {
+                Ok(0) => return Err(byteorder::Error::UnexpectedEOF),
+                Ok(n) => {
+                    nread += n;
+                    vec.push(buf[0]);
+                },
+                Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {},
+                Err(e) => return Err(From::from(e)),
+            }
+        }
+        Ok(vec)
     }
 
-    fn _read_str(&mut self, len: usize) -> IoResult<String> {
-        match String::from_utf8(try!(self.rd.read_exact(len))) {
+    fn _read_str(&mut self, len: usize) -> MsgpackResult<String> {
+        match String::from_utf8(try!(self._read_raw(len))) {
             Ok(s)  => Ok(s),
             Err(_) => Err(_invalid_input("No UTF-8 string"))
         }
     }
 
-    fn _read_vec_len(&mut self) -> IoResult<usize> {
+    fn _read_vec_len(&mut self) -> MsgpackResult<usize> {
         let c = try!(self._read_byte());
 
         match c {
             0x90 ... 0x9f => Ok((c as usize) & 0x0F),
-            0xdc         => self.rd.read_be_u16().map(|i| i as usize),
-            0xdd         => self.rd.read_be_u32().map(|i| i as usize),
+            0xdc         => self.rd.read_u16::<BigEndian>().map(|i| i as usize),
+            0xdd         => self.rd.read_u32::<BigEndian>().map(|i| i as usize),
             _            => Err(_invalid_input("Invalid byte code in _read_vec_len"))
         }
     }
 
-    fn _read_map_len(&mut self) -> IoResult<usize> {
+    fn _read_map_len(&mut self) -> MsgpackResult<usize> {
         let c = try!(self._read_byte());
         match c {
             0x80 ... 0x8f => Ok((c as usize) & 0x0F),
-            0xde         => self.rd.read_be_u16().map(|i| i as usize),
-            0xdf         => self.rd.read_be_u32().map(|i| i as usize),
+            0xde         => self.rd.read_u16::<BigEndian>().map(|i| i as usize),
+            0xdf         => self.rd.read_u32::<BigEndian>().map(|i| i as usize),
             _            => Err(_invalid_input("Invalid byte code in _read_map_len"))
         }
     }
 
-    fn decode_array(&mut self, len: usize) -> IoResult<Value> {
+    fn decode_array(&mut self, len: usize) -> MsgpackResult<Value> {
         let mut v = Vec::with_capacity(len);
         for _ in 0 .. len {
             v.push(try!(self.decode_value()));
@@ -155,7 +176,7 @@ impl<'a, R: Reader> Decoder<R> {
         Ok(Value::Array(v))
     }
 
-    fn decode_map(&mut self, len: usize) -> IoResult<Value> {
+    fn decode_map(&mut self, len: usize) -> MsgpackResult<Value> {
         let mut v = Vec::with_capacity(len);
         for _ in 0 .. len {
             let a = try!(self.decode_value());
@@ -165,15 +186,15 @@ impl<'a, R: Reader> Decoder<R> {
         Ok(Value::Map(v))
     }
 
-    fn decode_ext(&mut self, len: usize) -> IoResult<Value> {
+    fn decode_ext(&mut self, len: usize) -> MsgpackResult<Value> {
         let typ = try!(self.rd.read_i8());
         if typ < 0 {
             return Err(_invalid_input("Reserved type"));
         }
-        Ok(Value::Extended(typ, try!(self.rd.read_exact(len))))
+        Ok(Value::Extended(typ, try!(self._read_raw(len))))
     }
 
-    fn decode_value(&mut self) -> IoResult<Value> {
+    fn decode_value(&mut self) -> MsgpackResult<Value> {
         let c = try!(self._read_byte());
         match c {
             0xc0         => Ok(Value::Nil),
@@ -185,14 +206,14 @@ impl<'a, R: Reader> Decoder<R> {
 
             0x00 ... 0x7f => Ok(Value::Unsigned(c as u64)),
             0xcc         => self.rd.read_u8().map(|i| Value::Unsigned(i as u64)),
-            0xcd         => self.rd.read_be_u16().map(|i| Value::Unsigned(i as u64)),
-            0xce         => self.rd.read_be_u32().map(|i| Value::Unsigned(i as u64)),
-            0xcf         => self.rd.read_be_u64().map(|i| Value::Unsigned(i)),
+            0xcd         => self.rd.read_u16::<BigEndian>().map(|i| Value::Unsigned(i as u64)),
+            0xce         => self.rd.read_u32::<BigEndian>().map(|i| Value::Unsigned(i as u64)),
+            0xcf         => self.rd.read_u64::<BigEndian>().map(|i| Value::Unsigned(i)),
 
             0xd0         => self.rd.read_i8().map(|i| Value::Integer(i as i64)),
-            0xd1         => self.rd.read_be_i16().map(|i| Value::Integer(i as i64)),
-            0xd2         => self.rd.read_be_i32().map(|i| Value::Integer(i as i64)),
-            0xd3         => self.rd.read_be_i64().map(|i| Value::Integer(i)),
+            0xd1         => self.rd.read_i16::<BigEndian>().map(|i| Value::Integer(i as i64)),
+            0xd2         => self.rd.read_i32::<BigEndian>().map(|i| Value::Integer(i as i64)),
+            0xd3         => self.rd.read_i64::<BigEndian>().map(|i| Value::Integer(i)),
             0xe0 ... 0xff => Ok(Value::Integer((c as i8) as i64)),
 
             0xca         => read_float(&mut self.rd).map(|i| Value::Float(i)),
@@ -204,11 +225,11 @@ impl<'a, R: Reader> Decoder<R> {
                 self._read_raw(l).map(|i| Value::Str(i))
             }
             0xda         => {
-                let l = try!(self.rd.read_be_u16()) as usize;
+                let l = try!(self.rd.read_u16::<BigEndian>()) as usize;
                 self._read_raw(l).map(|i| Value::Str(i))
             }
             0xdb         => {
-                let l = try!(self.rd.read_be_u32()) as usize;
+                let l = try!(self.rd.read_u32::<BigEndian>()) as usize;
                 self._read_raw(l).map(|i| Value::Str(i))
             }
 
@@ -218,23 +239,23 @@ impl<'a, R: Reader> Decoder<R> {
             }
 
             0xc5         => {
-                let l = try!(self.rd.read_be_u16()) as usize;
+                let l = try!(self.rd.read_u16::<BigEndian>()) as usize;
                 self._read_raw(l).map(|i| Value::Binary(i))
             }
 
 
             0xc6         => {
-                let l = try!(self.rd.read_be_u32()) as usize;
+                let l = try!(self.rd.read_u32::<BigEndian>()) as usize;
                 self._read_raw(l).map(|i| Value::Binary(i))
             }
 
             0x90 ... 0x9f => self.decode_array((c as usize) & 0x0F),
-            0xdc         => { let l = try!(self.rd.read_be_u16()) as usize; self.decode_array(l) },
-            0xdd         => { let l = try!(self.rd.read_be_u32()) as usize; self.decode_array(l) },
+            0xdc         => { let l = try!(self.rd.read_u16::<BigEndian>()) as usize; self.decode_array(l) },
+            0xdd         => { let l = try!(self.rd.read_u32::<BigEndian>()) as usize; self.decode_array(l) },
 
             0x80 ... 0x8f => self.decode_map((c as usize) & 0x0F),
-            0xde         => { let l = try!(self.rd.read_be_u16()) as usize; self.decode_map(l) },
-            0xdf         => { let l = try!(self.rd.read_be_u32()) as usize; self.decode_map(l) },
+            0xde         => { let l = try!(self.rd.read_u16::<BigEndian>()) as usize; self.decode_map(l) },
+            0xdf         => { let l = try!(self.rd.read_u32::<BigEndian>()) as usize; self.decode_map(l) },
 
             0xd4         => self.decode_ext(1),
             0xd5         => self.decode_ext(2),
@@ -242,8 +263,8 @@ impl<'a, R: Reader> Decoder<R> {
             0xd7         => self.decode_ext(8),
             0xd8         => self.decode_ext(16),
             0xc7         => { let l = try!(self.rd.read_u8()) as usize; self.decode_ext(l) },
-            0xc8         => { let l = try!(self.rd.read_be_u16()) as usize; self.decode_ext(l) },
-            0xc9         => { let l = try!(self.rd.read_be_u32()) as usize; self.decode_ext(l) },
+            0xc8         => { let l = try!(self.rd.read_u16::<BigEndian>()) as usize; self.decode_ext(l) },
+            0xc9         => { let l = try!(self.rd.read_u32::<BigEndian>()) as usize; self.decode_ext(l) },
 
             // XXX: This is only here to satify Rust's pattern checker.
             _            => unreachable!()
@@ -253,11 +274,40 @@ impl<'a, R: Reader> Decoder<R> {
 
 }
 
-impl<R: Reader> serialize::Decoder for Decoder<R> {
-    type Error = IoError;
+// Insipired by rust-serialize json code.
+macro_rules! read_uprimitive {
+    ($name:ident, $ty:ident) => {
+    #[inline(always)]
+        fn $name(&mut self) -> MsgpackResult<$ty> {
+            let v = try!(self._read_unsigned());
+            if v < std::$ty::MIN as u64 || v > std::$ty::MAX as u64 {
+                Err(_invalid_input("value does not fit inside $ty"))
+            } else {
+                Ok(v as $ty)
+            }
+        }
+    }
+}
+
+macro_rules! read_iprimitive {
+    ($name:ident, $ty:ident) => {
+    #[inline(always)]
+        fn $name(&mut self) -> MsgpackResult<$ty> {
+            let v = try!(self._read_signed());
+            if v < std::$ty::MIN as i64 || v > std::$ty::MAX as i64 {
+                Err(_invalid_input("value does not fit inside $ty"))
+            } else {
+                Ok(v as $ty)
+            }
+        }
+    }
+}
+
+impl<R: Read> rustc_serialize::Decoder for Decoder<R> {
+    type Error = byteorder::Error;
 
     #[inline(always)]
-    fn read_nil(&mut self) -> IoResult<()> {
+    fn read_nil(&mut self) -> MsgpackResult<()> {
         match self._read_byte() {
             Ok(0xc0) => Ok(()),
             Ok(_)    => Err(_invalid_input("Invalid nil opcode")),
@@ -266,79 +316,25 @@ impl<R: Reader> serialize::Decoder for Decoder<R> {
     }
 
     #[inline(always)]
-    fn read_u64(&mut self) -> IoResult<u64> { self._read_unsigned() }
+    fn read_u64(&mut self) -> MsgpackResult<u64> { self._read_unsigned() }
+
+    read_uprimitive! { read_usize, usize }
+    read_uprimitive! { read_u32, u32 }
+    read_uprimitive! { read_u16, u16 }
+    read_uprimitive! { read_u8, u8 }
 
     #[inline(always)]
-    fn read_uint(&mut self) -> IoResult<usize> {
-        match try!(self._read_unsigned()).to_uint() {
-            Some(i) => Ok(i),
-            None    => Err(_invalid_input("value does not fit inside usize"))
-        }
-    }
-
-    #[inline(always)]
-    fn read_u32(&mut self) -> IoResult<u32> {
-        match try!(self._read_unsigned()).to_u32() {
-            Some(i) => Ok(i),
-            None    => Err(_invalid_input("value does not fit inside u32"))
-        }
-    }
-
-    #[inline(always)]
-    fn read_u16(&mut self) -> IoResult<u16> {
-        match try!(self._read_unsigned()).to_u16() {
-            Some(i) => Ok(i),
-            None    => Err(_invalid_input("value does not fit inside u16"))
-        }
-    }
-
-    #[inline(always)]
-    fn read_u8(&mut self) -> IoResult<u8> {
-        match try!(self._read_unsigned()).to_u8() {
-            Some(i) => Ok(i),
-            None    => Err(_invalid_input("value does not fit inside u8"))
-        }
-    }
-
-    #[inline(always)]
-    fn read_i64(&mut self) -> IoResult<i64> {
+    fn read_i64(&mut self) -> MsgpackResult<i64> {
         self._read_signed()
     }
 
-    #[inline(always)]
-    fn read_int(&mut self) -> IoResult<isize> {
-        match try!(self._read_signed()).to_int() {
-            Some(i) => Ok(i),
-            None    => Err(_invalid_input("value does not fit inside isize"))
-        }
-    }
+    read_iprimitive! { read_isize, isize }
+    read_iprimitive! { read_i32, i32 }
+    read_iprimitive! { read_i16, i16 }
+    read_iprimitive! { read_i8, i8 }
 
     #[inline(always)]
-    fn read_i32(&mut self) -> IoResult<i32> {
-        match try!(self._read_signed()).to_i32() {
-            Some(i) => Ok(i),
-            None    => Err(_invalid_input("value does not fit inside i32"))
-        }
-    }
-
-    #[inline(always)]
-    fn read_i16(&mut self) -> IoResult<i16> {
-        match try!(self._read_signed()).to_i16() {
-            Some(i) => Ok(i),
-            None    => Err(_invalid_input("value does not fit inside i16"))
-        }
-    }
-
-    #[inline(always)]
-    fn read_i8(&mut self) -> IoResult<i8> {
-        match try!(self._read_signed()).to_i8() {
-            Some(i) => Ok(i),
-            None    => Err(_invalid_input("value does not fit inside i8"))
-        }
-    }
-
-    #[inline(always)]
-    fn read_bool(&mut self) -> IoResult<bool> {
+    fn read_bool(&mut self) -> MsgpackResult<bool> {
         match try!(self._read_byte()) {
             0xc2 => Ok(false),
             0xc3 => Ok(true),
@@ -347,7 +343,7 @@ impl<R: Reader> serialize::Decoder for Decoder<R> {
     }
 
     #[inline(always)]
-    fn read_f64(&mut self) -> IoResult<f64> {
+    fn read_f64(&mut self) -> MsgpackResult<f64> {
         match try!(self._read_byte()) {
             0xcb => read_double(&mut self.rd),
             _    => Err(_invalid_input("invalid f64"))
@@ -355,7 +351,7 @@ impl<R: Reader> serialize::Decoder for Decoder<R> {
     }
 
     #[inline(always)]
-    fn read_f32(&mut self) -> IoResult<f32> {
+    fn read_f32(&mut self) -> MsgpackResult<f32> {
         match try!(self._read_byte()) {
             0xca => read_float(&mut self.rd),
             _    => Err(_invalid_input("invalid f32"))
@@ -364,14 +360,14 @@ impl<R: Reader> serialize::Decoder for Decoder<R> {
 
     // XXX: Optimize
     #[inline(always)]
-    fn read_char(&mut self) -> IoResult<char> {
+    fn read_char(&mut self) -> MsgpackResult<char> {
         let s = try!(self.read_str());
         if s.len() != 1 { return Err(_invalid_input("invalid char")) }
-        Ok(s.as_slice().chars().next().unwrap())
+        Ok(s.chars().next().unwrap())
     }
 
     #[inline(always)]
-    fn read_str(&mut self) -> IoResult<String> {
+    fn read_str(&mut self) -> MsgpackResult<String> {
         let c = try!(self._read_byte());
         match c {
             0xa0 ... 0xbf => self._read_str((c as usize) & 0x1F),
@@ -380,27 +376,27 @@ impl<R: Reader> serialize::Decoder for Decoder<R> {
                 self._read_str(l)
             },
             0xda         => {
-                let l = try!(self.rd.read_be_u16()) as usize;
+                let l = try!(self.rd.read_u16::<BigEndian>()) as usize;
                 self._read_str(l)
             },
             0xdb         => {
-                let l = try!(self.rd.read_be_u32()) as usize;
+                let l = try!(self.rd.read_u32::<BigEndian>()) as usize;
                 self._read_str(l)
             },
             _            => Err(_invalid_input("Invalid string"))
         }
     }
 
-    fn read_enum<T,F>(&mut self, _name: &str, f: F) -> IoResult<T>
-    where F: FnOnce(&mut Decoder<R>) -> IoResult<T> {
+    fn read_enum<T,F>(&mut self, _name: &str, f: F) -> MsgpackResult<T>
+    where F: FnOnce(&mut Decoder<R>) -> MsgpackResult<T> {
         f(self)
     }
 
-    fn read_enum_variant<T,F>(&mut self, names: &[&str], mut f: F) -> IoResult<T>
-    where F: FnMut(&mut Decoder<R>, usize) -> IoResult<T> {
+    fn read_enum_variant<T,F>(&mut self, names: &[&str], mut f: F) -> MsgpackResult<T>
+    where F: FnMut(&mut Decoder<R>, usize) -> MsgpackResult<T> {
         let idx = try!(self.read_seq(|d, _len| {
             let name = try!(d.read_str());
-            match names.iter().position(|n| name.as_slice() == *n) {
+            match names.iter().position(|n| &name[..] == *n) {
                 Some(idx) => Ok(idx),
                 None => { Err(_invalid_input("unknown variant")) },
             }
@@ -408,28 +404,27 @@ impl<R: Reader> serialize::Decoder for Decoder<R> {
 
         f(self, idx)
     }
-    fn read_enum_variant_arg<T,F>(&mut self, _idx: usize, f: F) -> IoResult<T> 
-    where F: FnOnce(&mut Decoder<R>) -> IoResult<T> {
+    fn read_enum_variant_arg<T,F>(&mut self, _idx: usize, f: F) -> MsgpackResult<T>
+    where F: FnOnce(&mut Decoder<R>) -> MsgpackResult<T> {
         f(self)
     }
 
     #[inline(always)]
-    fn read_seq<T,F>(&mut self, f: F) -> IoResult<T> 
-    where F: FnOnce(&mut Decoder<R>, usize) -> IoResult<T> {
+    fn read_seq<T,F>(&mut self, f: F) -> MsgpackResult<T>
+    where F: FnOnce(&mut Decoder<R>, usize) -> MsgpackResult<T> {
         let len = try!(self._read_vec_len());
         f(self, len)
     }
 
     #[inline(always)]
-    fn read_seq_elt<T,F>(&mut self, _idx: usize, f: F) -> IoResult<T> 
-    where F: FnOnce(&mut Decoder<R>) -> IoResult<T> {
+    fn read_seq_elt<T,F>(&mut self, _idx: usize, f: F) -> MsgpackResult<T>
+    where F: FnOnce(&mut Decoder<R>) -> MsgpackResult<T> {
         f(self)
     }
 
     #[inline(always)]
-    fn read_struct<T,F>(&mut self, _name: &str, len: usize, f: F) -> IoResult<T> 
-    where F: FnOnce(&mut Decoder<R>) -> IoResult<T> {
-        // XXX: Why are we using a map length here?
+    fn read_struct<T,F>(&mut self, _name: &str, len: usize, f: F) -> MsgpackResult<T>
+    where F: FnOnce(&mut Decoder<R>) -> MsgpackResult<T> {
         if len != try!(self._read_map_len()) {
             Err(_invalid_input("invalid length for struct"))
         } else {
@@ -438,51 +433,55 @@ impl<R: Reader> serialize::Decoder for Decoder<R> {
     }
 
     #[inline(always)]
-    fn read_struct_field<T,F>(&mut self, _name: &str, _idx: usize, f: F) -> IoResult<T> 
-    where F: FnOnce(&mut Decoder<R>) -> IoResult<T> {
-        f(self)
+    fn read_struct_field<T,F>(&mut self, name: &str, _idx: usize, f: F) -> MsgpackResult<T>
+    where F: FnOnce(&mut Decoder<R>) -> MsgpackResult<T> {
+        if name != try!(self.read_str()) {
+            Err(_invalid_input("struct field name mismatch"))
+        } else {
+            f(self)
+        }
     }
 
-    fn read_option<T,F>(&mut self, mut f: F) -> IoResult<T>
-    where F: FnMut(&mut Decoder<R>, bool) -> IoResult<T> {
+    fn read_option<T,F>(&mut self, mut f: F) -> MsgpackResult<T>
+    where F: FnMut(&mut Decoder<R>, bool) -> MsgpackResult<T> {
         match try!(self._peek_byte()) {
             0xc0 => { self._read_byte(); f(self, false) }, // consume the nil byte from packed format
             _    => { f(self, true) },
         }
     }
 
-    fn read_map<T,F>(&mut self, f: F) -> IoResult<T> 
-    where F: FnOnce(&mut Decoder<R>, usize) -> IoResult<T> {
+    fn read_map<T,F>(&mut self, f: F) -> MsgpackResult<T>
+    where F: FnOnce(&mut Decoder<R>, usize) -> MsgpackResult<T> {
         let len = try!(self._read_map_len());
         f(self, len)
     }
 
-    fn read_map_elt_key<T,F>(&mut self, _idx: usize, f: F) -> IoResult<T> 
-    where F: FnOnce(&mut Decoder<R>) -> IoResult<T> { f(self) }
+    fn read_map_elt_key<T,F>(&mut self, _idx: usize, f: F) -> MsgpackResult<T>
+    where F: FnOnce(&mut Decoder<R>) -> MsgpackResult<T> { f(self) }
 
-    fn read_map_elt_val<T,F>(&mut self, _idx: usize, f: F) -> IoResult<T> 
-    where F: FnOnce(&mut Decoder<R>) -> IoResult<T> { f(self) }
+    fn read_map_elt_val<T,F>(&mut self, _idx: usize, f: F) -> MsgpackResult<T>
+    where F: FnOnce(&mut Decoder<R>) -> MsgpackResult<T> { f(self) }
 
 
     fn read_enum_struct_variant<T,F>(&mut self,
                                      names: &[&str],
-                                     f: F) -> IoResult<T>
-    where F: FnMut(&mut Decoder<R>, usize) -> IoResult<T> {
+                                     f: F) -> MsgpackResult<T>
+    where F: FnMut(&mut Decoder<R>, usize) -> MsgpackResult<T> {
             self.read_enum_variant(names, f)
     }
 
     fn read_enum_struct_variant_field<T,F>(&mut self,
                                            _name: &str,
                                            idx: usize,
-                                           f: F) -> IoResult<T> 
-    where F: FnOnce(&mut Decoder<R>) -> IoResult<T> {
+                                           f: F) -> MsgpackResult<T>
+    where F: FnOnce(&mut Decoder<R>) -> MsgpackResult<T> {
 
         self.read_enum_variant_arg(idx, f)
-        
+
     }
 
-    fn read_tuple<T,F>(&mut self, exp_len: usize, f: F) -> IoResult<T> 
-    where F: FnOnce(&mut Decoder<R>) -> IoResult<T> {
+    fn read_tuple<T,F>(&mut self, exp_len: usize, f: F) -> MsgpackResult<T>
+    where F: FnOnce(&mut Decoder<R>) -> MsgpackResult<T> {
         let len = try!(self._read_vec_len());
         if exp_len == len {
             f(self)
@@ -491,35 +490,37 @@ impl<R: Reader> serialize::Decoder for Decoder<R> {
         }
     }
 
-    fn read_tuple_arg<T,F>(&mut self, idx: usize, f: F) -> IoResult<T> 
-    where F: FnOnce(&mut Decoder<R>) -> IoResult<T> {
+    fn read_tuple_arg<T,F>(&mut self, idx: usize, f: F) -> MsgpackResult<T>
+    where F: FnOnce(&mut Decoder<R>) -> MsgpackResult<T> {
         self.read_seq_elt(idx, f)
     }
 
     fn read_tuple_struct<T,F>(&mut self,
                             _name: &str, len: usize,
-                            f: F) -> IoResult<T> 
-    where F: FnOnce(&mut Decoder<R>) -> IoResult<T> {
+                            f: F) -> MsgpackResult<T>
+    where F: FnOnce(&mut Decoder<R>) -> MsgpackResult<T> {
 
         self.read_tuple(len, f)
     }
 
     fn read_tuple_struct_arg<T,F>(&mut self,
                                 idx: usize,
-                                f: F) -> IoResult<T> 
-    where F: FnOnce(&mut Decoder<R>) -> IoResult<T> {
+                                f: F) -> MsgpackResult<T>
+    where F: FnOnce(&mut Decoder<R>) -> MsgpackResult<T> {
 
         self.read_tuple_arg(idx, f)
     }
 
-    fn error(&mut self, _err: &str) -> IoError {
-        IoError {kind: InvalidInput, desc: "ApplicationError", detail: None}
+    fn error(&mut self, _err: &str) -> byteorder::Error {
+        let err = io::Error::new(ErrorKind::InvalidInput,
+                                 "ApplicationError");
+        byteorder::Error::Io(err)
     }
 }
 
 #[cfg(todo)]
-impl serialize::Decodable for Value {
-    fn decode<D, R: Reader>(s: &mut D) -> Result<Self, D::Error> 
+impl rustc_serialize::Decodable for Value {
+    fn decode<D, R: Read>(s: &mut D) -> Result<Self, D::Error>
         where D: Decoder<R> {
         s.decode_value()
     }
@@ -528,27 +529,27 @@ impl serialize::Decodable for Value {
 
 /// A structure for implementing serialization to Msgpack.
 pub struct Encoder<'a> {
-    wr: &'a mut (Writer + 'a)
+    wr: &'a mut (Write + 'a)
 }
 
 impl<'a> Encoder<'a> {
     /// Creates a new Msgpack encoder whose output will be written to the writer
     /// specified.
-    pub fn new(wr: &'a mut Writer) -> Encoder<'a> {
+    pub fn new(wr: &'a mut Write) -> Encoder<'a> {
         Encoder { wr: wr }
     }
 
-    pub fn to_msgpack<T: Encodable>(t: &T) -> IoResult<Vec<u8>> {
-        let mut m = MemWriter::new();
+    pub fn to_msgpack<T: Encodable>(t: &T) -> MsgpackResult<Vec<u8>> {
+        let mut m = Vec::new();
         {
-            let mut encoder = Encoder::new(&mut m as &mut Writer);
+            let mut encoder = Encoder::new(&mut m as &mut Write);
             try!(t.encode(&mut encoder));
         }
-        Ok(m.into_inner())
+        Ok(m)
     }
 
     /// Emits the most efficient representation of the given unsigned integer
-    fn _emit_unsigned(&mut self, v: u64) -> IoResult<()> {
+    fn _emit_unsigned(&mut self, v: u64) -> MsgpackResult<()> {
         if v <= 127 {
             try!(self.wr.write_u8(v as u8));
         }
@@ -558,22 +559,22 @@ impl<'a> Encoder<'a> {
         }
         else if v <= std::u16::MAX as u64 {
             try!(self.wr.write_u8(0xcd));
-            try!(self.wr.write_be_u16(v as u16));
+            try!(self.wr.write_u16::<BigEndian>(v as u16));
         }
         else if v <= std::u32::MAX as u64 {
             try!(self.wr.write_u8(0xce));
-            try!(self.wr.write_be_u32(v as u32));
+            try!(self.wr.write_u32::<BigEndian>(v as u32));
         }
         else {
             try!(self.wr.write_u8(0xcf));
-            try!(self.wr.write_be_u64(v));
+            try!(self.wr.write_u64::<BigEndian>(v));
         }
 
         Ok(())
     }
 
     /// Emits the most efficient representation of the given signed integer
-    fn _emit_signed(&mut self, v: i64) -> IoResult<()> {
+    fn _emit_signed(&mut self, v: i64) -> MsgpackResult<()> {
         if v >= std::i8::MIN as i64 && v <= std::i8::MAX as i64 {
             let v = v as i8;
             if (v as u8) & 0xe0 != 0xe0 {
@@ -584,23 +585,23 @@ impl<'a> Encoder<'a> {
         else if v >= std::i16::MIN as i64 && v <= std::i16::MAX as i64 {
             let v = v as i16;
             try!(self.wr.write_u8(0xd1));
-            try!(self.wr.write_be_i16(v));
+            try!(self.wr.write_i16::<BigEndian>(v));
         }
         else if v >= std::i32::MIN as i64 && v <= std::i32::MAX as i64 {
             let v = v as i32;
             try!(self.wr.write_u8(0xd2));
-            try!(self.wr.write_be_i32(v));
+            try!(self.wr.write_i32::<BigEndian>(v));
         }
         else {
             try!(self.wr.write_u8(0xd3));
-            try!(self.wr.write_be_i64(v));
+            try!(self.wr.write_i64::<BigEndian>(v));
         }
 
         Ok(())
     }
 
     #[inline(always)]
-    fn _emit_len(&mut self, len: usize, (op1, sz1): (u8, usize), (op2, sz2): (u8, usize), op3: u8, op4: u8) -> IoResult<()> {
+    fn _emit_len(&mut self, len: usize, (op1, sz1): (u8, usize), (op2, sz2): (u8, usize), op3: u8, op4: u8) -> MsgpackResult<()> {
         if len < sz1 {
             try!(self.wr.write_u8(op1));
         } else if len < sz2 {
@@ -608,24 +609,24 @@ impl<'a> Encoder<'a> {
             try!(self.wr.write_u8(len as u8));
         } else if len <= std::u16::MAX as usize {
             try!(self.wr.write_u8(op3));
-            try!(self.wr.write_be_u16(len as u16));
+            try!(self.wr.write_u16::<BigEndian>(len as u16));
         } else {
             assert!(len <= std::u32::MAX as usize); // XXX
             try!(self.wr.write_u8(op4));
-            try!(self.wr.write_be_u32(len as u32));
+            try!(self.wr.write_u32::<BigEndian>(len as u32));
         }
 
         Ok(())
     }
 
-    fn _emit_str_len(&mut self, len: usize) -> IoResult<()> {
+    fn _emit_str_len(&mut self, len: usize) -> MsgpackResult<()> {
         self._emit_len(len, (0xa0_u8 | (len & 31) as u8, 32),
         (0xd9, 256),
         0xda,
         0xdb)
     }
 
-    fn _emit_bin_len(&mut self, len: usize) -> IoResult<()> {
+    fn _emit_bin_len(&mut self, len: usize) -> MsgpackResult<()> {
         self._emit_len(len, (0x00, 0),
         (0xc4, 256),
         0xc5,
@@ -633,14 +634,14 @@ impl<'a> Encoder<'a> {
     }
 
 
-    fn _emit_array_len(&mut self, len: usize) -> IoResult<()> {
+    fn _emit_array_len(&mut self, len: usize) -> MsgpackResult<()> {
         self._emit_len(len, (0x90_u8 | (len & 15) as u8, 16),
         (0x00, 0),
         0xdc,
         0xdd)
     }
 
-    fn _emit_map_len(&mut self, len: usize) -> IoResult<()> {
+    fn _emit_map_len(&mut self, len: usize) -> MsgpackResult<()> {
         self._emit_len(len, (0x80_u8 | (len & 15) as u8, 16),
         (0x00, 0),
         0xde,
@@ -648,44 +649,44 @@ impl<'a> Encoder<'a> {
     }
 }
 
-impl<'a> serialize::Encoder for Encoder<'a> {
-    type Error = IoError;
+impl<'a> rustc_serialize::Encoder for Encoder<'a> {
+    type Error = byteorder::Error;
 
-    fn emit_nil(&mut self) -> IoResult<()> { self.wr.write_u8(0xc0) }
-
-    #[inline(always)]
-    fn emit_uint(&mut self, v: usize) -> IoResult<()> { self._emit_unsigned(v as u64) }
-    #[inline(always)]
-    fn emit_u64(&mut self, v: u64) -> IoResult<()>   { self._emit_unsigned(v as u64) }
-    #[inline(always)]
-    fn emit_u32(&mut self, v: u32) -> IoResult<()>   { self._emit_unsigned(v as u64) }
-    #[inline(always)]
-    fn emit_u16(&mut self, v: u16) -> IoResult<()>   { self._emit_unsigned(v as u64) }
-    #[inline(always)]
-    fn emit_u8(&mut self, v: u8) -> IoResult<()>     { self._emit_unsigned(v as u64) }
+    fn emit_nil(&mut self) -> MsgpackResult<()> { self.wr.write_u8(0xc0) }
 
     #[inline(always)]
-    fn emit_int(&mut self, v: isize) -> IoResult<()>  { self._emit_signed(v as i64) }
+    fn emit_usize(&mut self, v: usize) -> MsgpackResult<()> { self._emit_unsigned(v as u64) }
     #[inline(always)]
-    fn emit_i64(&mut self, v: i64) -> IoResult<()>  { self._emit_signed(v as i64) }
+    fn emit_u64(&mut self, v: u64) -> MsgpackResult<()>   { self._emit_unsigned(v as u64) }
     #[inline(always)]
-    fn emit_i32(&mut self, v: i32) -> IoResult<()>  { self._emit_signed(v as i64) }
+    fn emit_u32(&mut self, v: u32) -> MsgpackResult<()>   { self._emit_unsigned(v as u64) }
     #[inline(always)]
-    fn emit_i16(&mut self, v: i16) -> IoResult<()>  { self._emit_signed(v as i64) }
+    fn emit_u16(&mut self, v: u16) -> MsgpackResult<()>   { self._emit_unsigned(v as u64) }
     #[inline(always)]
-    fn emit_i8(&mut self,  v: i8) -> IoResult<()>   { self._emit_signed(v as i64) }
+    fn emit_u8(&mut self, v: u8) -> MsgpackResult<()>     { self._emit_unsigned(v as u64) }
 
-    fn emit_f64(&mut self, v: f64) -> IoResult<()> {
+    #[inline(always)]
+    fn emit_isize(&mut self, v: isize) -> MsgpackResult<()>  { self._emit_signed(v as i64) }
+    #[inline(always)]
+    fn emit_i64(&mut self, v: i64) -> MsgpackResult<()>  { self._emit_signed(v as i64) }
+    #[inline(always)]
+    fn emit_i32(&mut self, v: i32) -> MsgpackResult<()>  { self._emit_signed(v as i64) }
+    #[inline(always)]
+    fn emit_i16(&mut self, v: i16) -> MsgpackResult<()>  { self._emit_signed(v as i64) }
+    #[inline(always)]
+    fn emit_i8(&mut self,  v: i8) -> MsgpackResult<()>   { self._emit_signed(v as i64) }
+
+    fn emit_f64(&mut self, v: f64) -> MsgpackResult<()> {
         try!(self.wr.write_u8(0xcb));
-        unsafe { self.wr.write_be_u64(mem::transmute(v)) }
+        unsafe { self.wr.write_u64::<BigEndian>(mem::transmute(v)) }
     }
 
-    fn emit_f32(&mut self, v: f32) -> IoResult<()> {
+    fn emit_f32(&mut self, v: f32) -> MsgpackResult<()> {
         try!(self.wr.write_u8(0xca));
-        unsafe { self.wr.write_be_u32(mem::transmute(v)) }
+        unsafe { self.wr.write_u32::<BigEndian>(mem::transmute(v)) }
     }
 
-    fn emit_bool(&mut self, v: bool) -> IoResult<()> {
+    fn emit_bool(&mut self, v: bool) -> MsgpackResult<()> {
         if v {
             self.wr.write_u8(0xc3)
         } else {
@@ -693,118 +694,122 @@ impl<'a> serialize::Encoder for Encoder<'a> {
         }
     }
 
-    fn emit_char(&mut self, v: char)  -> IoResult<()> {
+    fn emit_char(&mut self, v: char)  -> MsgpackResult<()> {
         let mut s = String::with_capacity(1);
         s.push(v);
-        self.emit_str(s.as_slice())
+        self.emit_str(&s)
     }
 
-    fn emit_str(&mut self, v: &str) -> IoResult<()> {
+    fn emit_str(&mut self, v: &str) -> MsgpackResult<()> {
         try!(self._emit_str_len(v.len()));
-        self.wr.write_all(v.as_bytes())
+        // XXX There has to be a better way to do this...
+        match self.wr.write_all(v.as_bytes()) {
+            Ok(v) => Ok(v),
+            Err(e) => Err(byteorder::Error::Io(e))
+        }
     }
 
-    fn emit_enum<F>(&mut self, _name: &str, f: F) -> IoResult<()> 
-    where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> {
+    fn emit_enum<F>(&mut self, _name: &str, f: F) -> MsgpackResult<()>
+    where F: FnOnce(&mut Encoder<'a>) -> MsgpackResult<()> {
         f(self)
     }
 
-    fn emit_enum_variant<F>(&mut self, name: &str, _id: usize, cnt: usize, f: F) -> IoResult<()> 
-    where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> {
+    fn emit_enum_variant<F>(&mut self, name: &str, _id: usize, cnt: usize, f: F) -> MsgpackResult<()>
+    where F: FnOnce(&mut Encoder<'a>) -> MsgpackResult<()> {
         self.emit_seq(cnt + 1, |d| { d.emit_str(name) });
         f(self)
     }
 
-    fn emit_enum_variant_arg<F>(&mut self, _idx: usize, f: F) -> IoResult<()> 
-    where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> {
+    fn emit_enum_variant_arg<F>(&mut self, _idx: usize, f: F) -> MsgpackResult<()>
+    where F: FnOnce(&mut Encoder<'a>) -> MsgpackResult<()> {
         f(self)
     }
 
-    fn emit_enum_struct_variant<F>(&mut self, name: &str, id: usize, cnt: usize, f: F) -> IoResult<()> 
-    where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> {
+    fn emit_enum_struct_variant<F>(&mut self, name: &str, id: usize, cnt: usize, f: F) -> MsgpackResult<()>
+    where F: FnOnce(&mut Encoder<'a>) -> MsgpackResult<()> {
         self.emit_enum_variant(name, id, cnt, f)
     }
 
-    fn emit_enum_struct_variant_field<F>(&mut self, _name: &str, idx: usize, f: F)  -> IoResult<()> 
-    where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> {
+    fn emit_enum_struct_variant_field<F>(&mut self, _name: &str, idx: usize, f: F)  -> MsgpackResult<()>
+    where F: FnOnce(&mut Encoder<'a>) -> MsgpackResult<()> {
         self.emit_enum_variant_arg(idx, f)
     }
 
     // TODO: Option, to enable different ways to write out structs
     //       For example, to emit structs as maps/vectors.
-    // XXX: Correct to use _emit_map_len here?
-    fn emit_struct<F>(&mut self, _name: &str, len: usize, f: F)  -> IoResult<()> 
-    where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> {
+    fn emit_struct<F>(&mut self, _name: &str, len: usize, f: F)  -> MsgpackResult<()>
+    where F: FnOnce(&mut Encoder<'a>) -> MsgpackResult<()> {
         try!(self._emit_map_len(len));
         f(self)
     }
 
-    fn emit_struct_field<F>(&mut self, _name: &str, _idx: usize, f: F)  -> IoResult<()> 
-    where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> {
+    fn emit_struct_field<F>(&mut self, name: &str, _idx: usize, f: F)  -> MsgpackResult<()>
+    where F: FnOnce(&mut Encoder<'a>) -> MsgpackResult<()> {
+        try!(self.emit_str(name));
         f(self)
     }
 
-    fn emit_tuple<F>(&mut self, len: usize, f: F) -> IoResult<()> 
-    where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> {
+    fn emit_tuple<F>(&mut self, len: usize, f: F) -> MsgpackResult<()>
+    where F: FnOnce(&mut Encoder<'a>) -> MsgpackResult<()> {
         self.emit_seq(len, f)
     }
 
-    fn emit_tuple_arg<F>(&mut self, idx: usize, f: F) -> IoResult<()> 
-    where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> {
+    fn emit_tuple_arg<F>(&mut self, idx: usize, f: F) -> MsgpackResult<()>
+    where F: FnOnce(&mut Encoder<'a>) -> MsgpackResult<()> {
         self.emit_seq_elt(idx, f)
     }
 
     fn emit_tuple_struct<F>(&mut self,
                          _name: &str,
                          len: usize,
-                         f: F) -> IoResult<()> 
-    where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> {
+                         f: F) -> MsgpackResult<()>
+    where F: FnOnce(&mut Encoder<'a>) -> MsgpackResult<()> {
         self.emit_seq(len, f)
     }
 
-    fn emit_tuple_struct_arg<F>(&mut self, idx: usize, f: F) -> IoResult<()> 
-    where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> {
+    fn emit_tuple_struct_arg<F>(&mut self, idx: usize, f: F) -> MsgpackResult<()>
+    where F: FnOnce(&mut Encoder<'a>) -> MsgpackResult<()> {
         self.emit_seq_elt(idx, f)
     }
 
-    fn emit_option<F>(&mut self, f: F) -> IoResult<()> 
-    where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> { f(self) }
+    fn emit_option<F>(&mut self, f: F) -> MsgpackResult<()>
+    where F: FnOnce(&mut Encoder<'a>) -> MsgpackResult<()> { f(self) }
 
-    fn emit_option_none(&mut self) -> IoResult<()>  { self.emit_nil() }
+    fn emit_option_none(&mut self) -> MsgpackResult<()>  { self.emit_nil() }
 
-    fn emit_option_some<F>(&mut self, f: F) -> IoResult<()> 
-    where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> { f(self) }
+    fn emit_option_some<F>(&mut self, f: F) -> MsgpackResult<()>
+    where F: FnOnce(&mut Encoder<'a>) -> MsgpackResult<()> { f(self) }
 
-    fn emit_seq<F>(&mut self, len: usize, f: F) -> IoResult<()> 
-    where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> {
+    fn emit_seq<F>(&mut self, len: usize, f: F) -> MsgpackResult<()>
+    where F: FnOnce(&mut Encoder<'a>) -> MsgpackResult<()> {
         try!(self._emit_array_len(len));
         f(self)
     }
 
-    fn emit_seq_elt<F>(&mut self, _idx: usize, f: F) -> IoResult<()> 
-    where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> {
+    fn emit_seq_elt<F>(&mut self, _idx: usize, f: F) -> MsgpackResult<()>
+    where F: FnOnce(&mut Encoder<'a>) -> MsgpackResult<()> {
         f(self)
     }
 
-    fn emit_map<F>(&mut self, len: usize, f: F) -> IoResult<()> 
-     where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> {
+    fn emit_map<F>(&mut self, len: usize, f: F) -> MsgpackResult<()>
+     where F: FnOnce(&mut Encoder<'a>) -> MsgpackResult<()> {
         try!(self._emit_map_len(len));
         f(self)
     }
 
-    fn emit_map_elt_key<F>(&mut self, _idx: usize, f: F) -> IoResult<()> 
-    where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> {
+    fn emit_map_elt_key<F>(&mut self, _idx: usize, f: F) -> MsgpackResult<()>
+    where F: FnOnce(&mut Encoder<'a>) -> MsgpackResult<()> {
         f(self)
     }
 
-    fn emit_map_elt_val<F>(&mut self, _idx: usize, f: F) -> IoResult<()> 
-    where F: FnOnce(&mut Encoder<'a>) -> IoResult<()> {
+    fn emit_map_elt_val<F>(&mut self, _idx: usize, f: F) -> MsgpackResult<()>
+    where F: FnOnce(&mut Encoder<'a>) -> MsgpackResult<()> {
         f(self)
     }
 }
 
 #[cfg(todo)]
-impl<E: serialize::Encoder<S>, S> serialize::Encodable<E, S> for Value {
+impl<E: rustc_serialize::Encoder<S>, S> rustc_serialize::Encodable<E, S> for Value {
     fn encode(&self, e: &mut E) -> Result<(), S> {
         match *self {
             Value::Nil => e.emit_nil(),
@@ -830,7 +835,7 @@ impl<E: serialize::Encoder<S>, S> serialize::Encodable<E, S> for Value {
                     Ok(())
                 })
             }
-            Value::Str(ref str) => e.emit_str(from_utf8(str.as_slice()).unwrap()), // XXX
+            Value::Str(ref str) => e.emit_str(from_utf8(str).unwrap()), // XXX
             Value::Binary(_) => panic!(), // XXX
             Value::Extended(_, _) => panic!() // XXX
         }
@@ -839,7 +844,7 @@ impl<E: serialize::Encoder<S>, S> serialize::Encodable<E, S> for Value {
 }
 
 
-pub fn from_msgpack<'a, T: Decodable>(bytes: &'a [u8]) -> IoResult<T> {
+pub fn from_msgpack<'a, T: Decodable>(bytes: &'a [u8]) -> MsgpackResult<T> {
     let rd = BufReader::new(bytes);
     let mut decoder = Decoder::new(rd);
     Decodable::decode(&mut decoder)
@@ -849,13 +854,24 @@ pub fn from_msgpack<'a, T: Decodable>(bytes: &'a [u8]) -> IoResult<T> {
 mod test {
     use std::collections::HashMap;
     use super::{Encoder, from_msgpack};
-    use serialize::Encodable;
+    use rustc_serialize::Encodable;
 
     macro_rules! assert_msgpack_circular(
         ($ty:ty, $inp:expr) => (
             {
                 let bytes = Encoder::to_msgpack(&$inp).unwrap();
-                let value: $ty = from_msgpack(bytes.as_slice()).unwrap();
+                let value: $ty = from_msgpack(&bytes[..]).unwrap();
+                assert_eq!($inp, value)
+            }
+        );
+    );
+
+    macro_rules! assert_msgpack_reference(
+        ($ty:ty, $inp:expr, $ref_bytes:expr) => (
+            {
+                let bytes = Encoder::to_msgpack(&$inp).unwrap();
+                assert_eq!($ref_bytes, &bytes[..]);
+                let value: $ty = from_msgpack($ref_bytes).unwrap();
                 assert_eq!($inp, value)
             }
         );
@@ -870,8 +886,8 @@ mod test {
 
     #[test]
     fn test_circular_isize() {
-      assert_msgpack_circular!(isize, 123is);
-      assert_msgpack_circular!(isize, -123is);
+      assert_msgpack_circular!(isize, 123isize);
+      assert_msgpack_circular!(isize, -123isize);
     }
 
     #[test]
@@ -893,8 +909,8 @@ mod test {
     #[test]
     fn test_circular_map() {
       let mut v = HashMap::new();
-      v.insert(1is, 2is);
-      v.insert(3is, 4is);
+      v.insert(1isize, 2isize);
+      v.insert(3isize, 4isize);
       assert_msgpack_circular!(HashMap<isize, isize>, v);
     }
 
@@ -921,7 +937,7 @@ mod test {
       assert_msgpack_circular!(char, 'a');
     }
 
-    #[derive(Encodable,Decodable,PartialEq,Debug)]
+    #[derive(RustcEncodable,RustcDecodable,PartialEq,Debug)]
     struct S {
       f: u8,
       g: u16,
@@ -943,6 +959,19 @@ mod test {
       assert_msgpack_circular!(Vec<S>, s);
     }
 
+    #[derive(RustcEncodable,RustcDecodable,PartialEq,Debug)]
+    struct R {
+      compact: bool,
+      schema: u8,
+    }
+
+    #[test]
+    fn test_reference_struct() {
+        let r1 = R { compact: true, schema: 0 };
+        let ref_bytes = [130, 167, 99, 111, 109, 112, 97, 99, 116, 195, 166, 115, 99, 104, 101, 109, 97, 0];
+        assert_msgpack_reference!(R, r1, &ref_bytes);
+    }
+
     #[test]
     fn test_circular_str_lengths() {
         fn from_char(mut n: usize, c: char) -> String {
@@ -959,7 +988,7 @@ mod test {
         assert_msgpack_circular!(String, from_char(0x10000, 'a'));
     }
 
-    #[derive(Encodable,Decodable,PartialEq,Show)]
+    #[derive(RustcEncodable,RustcDecodable,PartialEq,Debug)]
     enum Animal {
         Dog,
         Frog(String, usize),

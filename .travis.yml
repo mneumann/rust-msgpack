@@ -1,9 +1,5 @@
+sudo: false
 language: rust
-
-script:
-  - cargo build -v
-  - cargo test -v
-
 notifications:
   email:
     - michaelneuma@gmail.com
