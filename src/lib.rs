@@ -853,6 +853,11 @@ pub fn from_msgpack<'a, T: Decodable>(bytes: &'a [u8]) -> MsgpackResult<T> {
     Decodable::decode(&mut decoder)
 }
 
+pub fn encode_into<W:Write, T:Encodable>(wr: &mut W, t: &T) -> MsgpackResult<()> {
+    let mut encoder = Encoder::new(wr as &mut Write);
+    t.encode(&mut encoder)
+}
+
 #[cfg(test)]
 mod test {
     use std::collections::HashMap;
