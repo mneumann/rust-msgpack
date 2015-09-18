@@ -1,6 +1,7 @@
 //! msgpack.org implementation for Rust
 
 #![crate_type = "lib"]
+#![feature(slice_splits)]
 
 extern crate rustc_serialize;
 extern crate byteorder;
@@ -15,6 +16,8 @@ use std::mem;
 use rustc_serialize::{Encodable, Decodable};
 
 pub type MsgpackResult<T> = Result<T, byteorder::Error>;
+
+pub mod slice_reader;
 
 #[cfg(todo)]
 mod rpc;
