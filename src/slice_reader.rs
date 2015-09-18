@@ -1,6 +1,7 @@
 use byteorder::{BigEndian, ReadBytesExt};
 use std::mem;
 
+#[derive(Debug, PartialEq)]
 pub enum Error {
    /// End of stream
    Eos,
@@ -12,7 +13,7 @@ pub enum Error {
    NeedMoreData(Option<usize>)
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Value<'a> {
     Nil,
     Boolean(bool),
@@ -243,5 +244,55 @@ pub fn parse_next<'a>(data: &'a[u8]) -> Result<(Value<'a>, &'a[u8]), Error> {
         None => {
             Err(Error::Eos)
         }
+    }
+}
+
+#[test]
+fn test_decode() {
+    use super::encode_into;
+    use rustc_serialize::Encodable;
+    use super::Encoder;
+
+    let mut v = Vec::new();
+
+    encode_into(&mut v, &1234u64);
+
+    match parse_next(&v[..]) {
+        Ok((Value::Unsigned(n), rest)) => {
+                assert_eq!(1234, n);
+                assert!(rest.is_empty());
+        }
+        _ => assert!(false)
+    }
+}
+
+#[test]
+fn test_decode_array() {
+    use super::encode_into;
+    use rustc_serialize::Encodable;
+    use super::Encoder;
+
+    let mut v = Vec::new();
+
+    encode_into(&mut v, &[1u64, 2u64, 3u64]);
+
+    match parse_next(&v[..]) {
+        Ok((Value::Array(n), rest)) => {
+                assert_eq!(3, n);
+                assert!(!rest.is_empty());
+                let mut next = rest;
+                for i in 0..n {
+                    match parse_next(next) {
+                        Ok((Value::Unsigned(x), rest)) => {
+                                assert_eq!((i+1) as u64, x);
+                                next = rest;
+                        }
+                        _ => assert!(false)
+                    }
+                }
+                assert!(next.is_empty());
+                assert_eq!(Err(Error::Eos), parse_next(next))
+        }
+        _ => assert!(false)
     }
 }
