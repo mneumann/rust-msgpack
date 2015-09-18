@@ -296,3 +296,22 @@ fn test_decode_array() {
         _ => assert!(false)
     }
 }
+
+#[test]
+fn test_decode_string() {
+    use super::encode_into;
+    use rustc_serialize::Encodable;
+    use super::Encoder;
+
+    let mut v = Vec::new();
+
+    encode_into(&mut v, &"hello world");
+
+    match parse_next(&v[..]) {
+        Ok((Value::String(s), rest)) => {
+                assert_eq!(b"hello world", s);
+                assert!(rest.is_empty());
+        }
+        _ => assert!(false)
+    }
+}
