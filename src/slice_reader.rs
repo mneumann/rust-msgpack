@@ -89,6 +89,43 @@ macro_rules! be_u64 {
     }
 }
 
+pub fn parse_string_opt<'a>(data: &'a[u8]) -> Result<(Option<&'a[u8]>, &'a[u8]), Error> {
+    match data.split_first() {
+        Some((&c, rest)) => {
+            match c {
+                0xa0 ... 0xbf   => match needs_more_data!((c as usize) & 0x1F, rest) {
+                                        (item, rest) => return Ok((Some(item), rest))
+                                   },
+
+                0xd9            => match needs_more_data!(1, rest) {
+                                        (item, rest) => match needs_more_data!(item[0] as usize, rest) {
+                                                                (item, rest) => Ok((Some(item), rest))
+                                                        }
+                                   },
+
+                0xda            => match needs_more_data!(2, rest) {
+                                        (item, rest) => match needs_more_data!(be_u16!(item) as usize, rest) {
+                                                                (item, rest) => Ok((Some(item), rest))
+                                                        }
+                                   },
+
+                0xdb            => match needs_more_data!(4, rest) {
+                                        (item, rest) => match needs_more_data!(be_u32!(item) as usize, rest) {
+                                                                (item, rest) => Ok((Some(item), rest))
+                                                        }
+                                   },
+
+                0xc0            => Ok((None, rest)),
+
+                _               => Err(Error::Invalid("Invalid")),
+            }
+        }
+        None => {
+            Err(Error::Eos)
+        }
+    }
+}
+
 pub fn parse_next<'a>(data: &'a[u8]) -> Result<(Value<'a>, &'a[u8]), Error> {
     match data.split_first() {
         Some((&c, rest)) => {
