@@ -92,12 +92,30 @@ macro_rules! be_u64 {
 pub fn parse_next<'a>(data: &'a[u8]) -> Result<(Value<'a>, &'a[u8]), Error> {
     match data.split_first() {
         Some((&c, rest)) => {
+            if c <= 0x7f {
+                return Ok((Value::Unsigned(c as u64), rest));
+            }
+            if c >= 0xe0 && c <= 0xff {
+                return Ok((Value::Signed((c as i8) as i64), rest));
+            }
+            if c >= 0xa0 && c <= 0xbf {
+                match needs_more_data!((c as usize) & 0x1F, rest) {
+                    (item, rest) => return Ok((Value::String(item), rest))
+                }
+            }
+            if c >= 0x90 && c <= 0x9f {
+                return Ok((Value::Array((c as usize) & 0x0F), rest));
+            }
+            if c >= 0x80 && c <= 0x8f {
+                return Ok((Value::Map((c as usize) & 0x0F), rest));
+            }
+
             match c {
                 0xc0            => Ok((Value::Nil, rest)),
                 0xc1            => Err(Error::Invalid("Reserved")),
                 0xc2            => Ok((Value::Boolean(false), rest)),
                 0xc3            => Ok((Value::Boolean(true), rest)),
-                0x00 ... 0x7f   => Ok((Value::Unsigned(c as u64), rest)),
+                //0x00 ... 0x7f   => Ok((Value::Unsigned(c as u64), rest)),
 
 
                 //
@@ -145,7 +163,7 @@ pub fn parse_next<'a>(data: &'a[u8]) -> Result<(Value<'a>, &'a[u8]), Error> {
                                                 Ok((Value::Signed(be_u64!(item) as i64), rest))
                                         }
                                    },
-                0xe0 ... 0xff   => Ok((Value::Signed((c as i8) as i64), rest)),
+                //0xe0 ... 0xff   => Ok((Value::Signed((c as i8) as i64), rest)),
 
                 //
                 // Floating point
@@ -168,9 +186,11 @@ pub fn parse_next<'a>(data: &'a[u8]) -> Result<(Value<'a>, &'a[u8]), Error> {
                 // String
                 //
 
+                /*
                 0xa0 ... 0xbf   => match needs_more_data!((c as usize) & 0x1F, rest) {
                                         (item, rest) => Ok((Value::String(item), rest))
                                    },
+                */
 
                 0xd9            => match needs_more_data!(1, rest) {
                                         (item, rest) => match needs_more_data!(item[0] as usize, rest) {
@@ -216,7 +236,7 @@ pub fn parse_next<'a>(data: &'a[u8]) -> Result<(Value<'a>, &'a[u8]), Error> {
                 // Array
                 //
 
-                0x90 ... 0x9f   => Ok((Value::Array((c as usize) & 0x0F), rest)),
+                //0x90 ... 0x9f   => Ok((Value::Array((c as usize) & 0x0F), rest)),
                 0xdc            => match needs_more_data!(2, rest) {
                                         (item, rest) => Ok((Value::Array(be_u16!(item) as usize), rest))
                                    },
@@ -228,7 +248,7 @@ pub fn parse_next<'a>(data: &'a[u8]) -> Result<(Value<'a>, &'a[u8]), Error> {
                 // Map
                 //
 
-                0x80 ... 0x8f   => Ok((Value::Map((c as usize) & 0x0F), rest)),
+                //0x80 ... 0x8f   => Ok((Value::Map((c as usize) & 0x0F), rest)),
                 0xde            => match needs_more_data!(2, rest) {
                                         (item, rest) => Ok((Value::Map(be_u16!(item) as usize), rest))
                                    },
