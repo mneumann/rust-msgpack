@@ -18,6 +18,7 @@ use rustc_serialize::{Encodable, Decodable};
 pub type MsgpackResult<T> = Result<T, byteorder::Error>;
 
 pub mod slice_reader;
+pub mod encoder;
 
 #[cfg(todo)]
 mod rpc;
