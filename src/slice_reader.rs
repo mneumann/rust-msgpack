@@ -247,6 +247,29 @@ pub fn parse_next<'a>(data: &'a[u8]) -> Result<(Value<'a>, &'a[u8]), Error> {
     }
 }
 
+pub struct Reader<'a> {
+    data: &'a[u8]
+}
+
+impl<'a> Reader<'a> {
+    pub fn new(data: &'a[u8]) -> Reader<'a> {
+        Reader{data: data}
+    }
+
+    pub fn next(&mut self) -> Result<Value<'a>, Error> {
+        let r = parse_next(self.data);
+        match r {
+            Ok((res, rest)) => {
+                self.data = rest;
+                Ok(res)
+            }
+            Err(e) => Err(e)
+        }
+    }
+}
+
+
+
 #[test]
 fn test_decode() {
     use super::encode_into;
