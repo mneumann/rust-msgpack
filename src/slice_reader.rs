@@ -89,6 +89,7 @@ macro_rules! be_u64 {
     }
 }
 
+#[inline]
 pub fn parse_string_opt<'a>(data: &'a[u8]) -> Result<(Option<&'a[u8]>, &'a[u8]), Error> {
     match data.split_first() {
         Some((&c, rest)) => {
@@ -126,6 +127,7 @@ pub fn parse_string_opt<'a>(data: &'a[u8]) -> Result<(Option<&'a[u8]>, &'a[u8]),
     }
 }
 
+#[inline]
 pub fn parse_next<'a>(data: &'a[u8]) -> Result<(Value<'a>, &'a[u8]), Error> {
     match data.split_first() {
         Some((&c, rest)) => {

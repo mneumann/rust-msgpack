@@ -38,12 +38,12 @@ pub enum Value {
     Extended(i8, Vec<u8>)
 }
 
-#[inline(always)]
+#[inline]
 fn read_float(rd: &mut Read) -> MsgpackResult<f32> {
     rd.read_u32::<BigEndian>().map(|v| unsafe { mem::transmute(v) })
 }
 
-#[inline(always)]
+#[inline]
 fn read_double(rd: &mut Read) -> MsgpackResult<f64> {
     rd.read_u64::<BigEndian>().map(|v| unsafe { mem::transmute(v) })
 }
@@ -281,7 +281,7 @@ impl<'a, R: Read> Decoder<R> {
 // Insipired by rust-serialize json code.
 macro_rules! read_uprimitive {
     ($name:ident, $ty:ident) => {
-    #[inline(always)]
+    #[inline]
         fn $name(&mut self) -> MsgpackResult<$ty> {
             let v = try!(self._read_unsigned());
             if v < std::$ty::MIN as u64 || v > std::$ty::MAX as u64 {
@@ -295,7 +295,7 @@ macro_rules! read_uprimitive {
 
 macro_rules! read_iprimitive {
     ($name:ident, $ty:ident) => {
-    #[inline(always)]
+    #[inline]
         fn $name(&mut self) -> MsgpackResult<$ty> {
             let v = try!(self._read_signed());
             if v < std::$ty::MIN as i64 || v > std::$ty::MAX as i64 {
@@ -310,7 +310,7 @@ macro_rules! read_iprimitive {
 impl<R: Read> rustc_serialize::Decoder for Decoder<R> {
     type Error = byteorder::Error;
 
-    #[inline(always)]
+    #[inline]
     fn read_nil(&mut self) -> MsgpackResult<()> {
         match self._read_byte() {
             Ok(0xc0) => Ok(()),
@@ -319,7 +319,7 @@ impl<R: Read> rustc_serialize::Decoder for Decoder<R> {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn read_u64(&mut self) -> MsgpackResult<u64> { self._read_unsigned() }
 
     read_uprimitive! { read_usize, usize }
@@ -327,7 +327,7 @@ impl<R: Read> rustc_serialize::Decoder for Decoder<R> {
     read_uprimitive! { read_u16, u16 }
     read_uprimitive! { read_u8, u8 }
 
-    #[inline(always)]
+    #[inline]
     fn read_i64(&mut self) -> MsgpackResult<i64> {
         self._read_signed()
     }
@@ -337,7 +337,7 @@ impl<R: Read> rustc_serialize::Decoder for Decoder<R> {
     read_iprimitive! { read_i16, i16 }
     read_iprimitive! { read_i8, i8 }
 
-    #[inline(always)]
+    #[inline]
     fn read_bool(&mut self) -> MsgpackResult<bool> {
         match try!(self._read_byte()) {
             0xc2 => Ok(false),
@@ -346,7 +346,7 @@ impl<R: Read> rustc_serialize::Decoder for Decoder<R> {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn read_f64(&mut self) -> MsgpackResult<f64> {
         match try!(self._read_byte()) {
             0xcb => read_double(&mut self.rd),
@@ -354,7 +354,7 @@ impl<R: Read> rustc_serialize::Decoder for Decoder<R> {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn read_f32(&mut self) -> MsgpackResult<f32> {
         match try!(self._read_byte()) {
             0xca => read_float(&mut self.rd),
@@ -363,14 +363,14 @@ impl<R: Read> rustc_serialize::Decoder for Decoder<R> {
     }
 
     // XXX: Optimize
-    #[inline(always)]
+    #[inline]
     fn read_char(&mut self) -> MsgpackResult<char> {
         let s = try!(self.read_str());
         if s.len() != 1 { return Err(_invalid_input("invalid char")) }
         Ok(s.chars().next().unwrap())
     }
 
-    #[inline(always)]
+    #[inline]
     fn read_str(&mut self) -> MsgpackResult<String> {
         let c = try!(self._read_byte());
         match c {
@@ -413,20 +413,20 @@ impl<R: Read> rustc_serialize::Decoder for Decoder<R> {
         f(self)
     }
 
-    #[inline(always)]
+    #[inline]
     fn read_seq<T,F>(&mut self, f: F) -> MsgpackResult<T>
     where F: FnOnce(&mut Decoder<R>, usize) -> MsgpackResult<T> {
         let len = try!(self._read_vec_len());
         f(self, len)
     }
 
-    #[inline(always)]
+    #[inline]
     fn read_seq_elt<T,F>(&mut self, _idx: usize, f: F) -> MsgpackResult<T>
     where F: FnOnce(&mut Decoder<R>) -> MsgpackResult<T> {
         f(self)
     }
 
-    #[inline(always)]
+    #[inline]
     fn read_struct<T,F>(&mut self, _name: &str, len: usize, f: F) -> MsgpackResult<T>
     where F: FnOnce(&mut Decoder<R>) -> MsgpackResult<T> {
         if len != try!(self._read_map_len()) {
@@ -436,7 +436,7 @@ impl<R: Read> rustc_serialize::Decoder for Decoder<R> {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn read_struct_field<T,F>(&mut self, name: &str, _idx: usize, f: F) -> MsgpackResult<T>
     where F: FnOnce(&mut Decoder<R>) -> MsgpackResult<T> {
         if name != try!(self.read_str()) {
@@ -604,7 +604,7 @@ impl<'a> Encoder<'a> {
         Ok(())
     }
 
-    #[inline(always)]
+    #[inline]
     fn _emit_len(&mut self, len: usize, (op1, sz1): (u8, usize), (op2, sz2): (u8, usize), op3: u8, op4: u8) -> MsgpackResult<()> {
         if len < sz1 {
             try!(self.wr.write_u8(op1));
@@ -658,26 +658,26 @@ impl<'a> rustc_serialize::Encoder for Encoder<'a> {
 
     fn emit_nil(&mut self) -> MsgpackResult<()> { self.wr.write_u8(0xc0) }
 
-    #[inline(always)]
+    #[inline]
     fn emit_usize(&mut self, v: usize) -> MsgpackResult<()> { self._emit_unsigned(v as u64) }
-    #[inline(always)]
+    #[inline]
     fn emit_u64(&mut self, v: u64) -> MsgpackResult<()>   { self._emit_unsigned(v as u64) }
-    #[inline(always)]
+    #[inline]
     fn emit_u32(&mut self, v: u32) -> MsgpackResult<()>   { self._emit_unsigned(v as u64) }
-    #[inline(always)]
+    #[inline]
     fn emit_u16(&mut self, v: u16) -> MsgpackResult<()>   { self._emit_unsigned(v as u64) }
-    #[inline(always)]
+    #[inline]
     fn emit_u8(&mut self, v: u8) -> MsgpackResult<()>     { self._emit_unsigned(v as u64) }
 
-    #[inline(always)]
+    #[inline]
     fn emit_isize(&mut self, v: isize) -> MsgpackResult<()>  { self._emit_signed(v as i64) }
-    #[inline(always)]
+    #[inline]
     fn emit_i64(&mut self, v: i64) -> MsgpackResult<()>  { self._emit_signed(v as i64) }
-    #[inline(always)]
+    #[inline]
     fn emit_i32(&mut self, v: i32) -> MsgpackResult<()>  { self._emit_signed(v as i64) }
-    #[inline(always)]
+    #[inline]
     fn emit_i16(&mut self, v: i16) -> MsgpackResult<()>  { self._emit_signed(v as i64) }
-    #[inline(always)]
+    #[inline]
     fn emit_i8(&mut self,  v: i8) -> MsgpackResult<()>   { self._emit_signed(v as i64) }
 
     fn emit_f64(&mut self, v: f64) -> MsgpackResult<()> {
