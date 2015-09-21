@@ -27,18 +27,23 @@ pub enum Value<'a> {
     Map(usize),
 }
 
+fn split_at_opt<'a, T>(s: &'a [T], mid: usize) -> Option<(&'a [T], &'a [T])> {
+    if s.len() < mid {
+        None
+    } else {
+        Some(s.split_at(mid))
+    }
+}
+
 macro_rules! needs_more_data {
     (
         $n:expr, $data:expr
     ) => {
-        if $data.len() < $n {
-            return Err(Error::NeedMoreData(Some($n - $data.len())));
-        } else {
-            match $data.split_at($n) {
-                (d, rest) => {
+        match split_at_opt($data, $n) {
+            None => return Err(Error::NeedMoreData(Some($n - $data.len()))),
+            Some((d, rest)) => {
                     debug_assert!(d.len() == $n);
                     (d, rest)
-                }
             }
         }
     }
