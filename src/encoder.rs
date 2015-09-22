@@ -2,31 +2,31 @@ use std::io::Write;
 use byteorder::{self,BigEndian, WriteBytesExt};
 use std::{self, mem};
 
-#[inline(always)]
+#[inline]
 fn encode_u7<W:Write>(wr: &mut W, val: u8) -> byteorder::Result<()> {
     debug_assert!(val <= 127);
     wr.write_u8(val as u8)
 }
 
-#[inline(always)]
+#[inline]
 fn encode_u8<W:Write>(wr: &mut W, val: u8) -> byteorder::Result<()> {
     try!(wr.write_u8(0xcc));
     wr.write_u8(val)
 }
 
-#[inline(always)]
+#[inline]
 fn encode_u16<W:Write>(wr: &mut W, val: u16) -> byteorder::Result<()> {
     try!(wr.write_u8(0xcd));
     wr.write_u16::<BigEndian>(val)
 }
 
-#[inline(always)]
+#[inline]
 fn encode_u32<W:Write>(wr: &mut W, val: u32) -> byteorder::Result<()> {
     try!(wr.write_u8(0xce));
     wr.write_u32::<BigEndian>(val)
 }
 
-#[inline(always)]
+#[inline]
 fn encode_u64<W:Write>(wr: &mut W, val: u64) -> byteorder::Result<()> {
     try!(wr.write_u8(0xcf));
     wr.write_u64::<BigEndian>(val)
@@ -51,7 +51,7 @@ pub fn encode_unsigned<W:Write>(wr: &mut W, val: u64) -> byteorder::Result<()> {
     }
 }
 
-#[inline(always)]
+#[inline]
 fn encode_op_len<W:Write>(wr: &mut W, len: u32, op_sz1: Option<(u8, u32)>, op2_opt: Option<u8>, op16: u8, op32: u8) -> byteorder::Result<()> {
     if let Some((op1, sz1)) = op_sz1 {
         if len <= sz1 {
