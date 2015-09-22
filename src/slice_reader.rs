@@ -89,6 +89,7 @@ macro_rules! be_u64 {
     }
 }
 
+#[inline]
 pub fn parse_string_opt<'a>(data: &'a[u8]) -> Result<(Option<&'a[u8]>, &'a[u8]), Error> {
     match data.split_first() {
         Some((&c, rest)) => {
@@ -126,6 +127,40 @@ pub fn parse_string_opt<'a>(data: &'a[u8]) -> Result<(Option<&'a[u8]>, &'a[u8]),
     }
 }
 
+#[inline]
+pub fn parse_unsigned<'a>(data: &'a[u8]) -> Result<(u64, &'a[u8]), Error> {
+    match data.split_first() {
+        Some((&c, rest)) => {
+            match c {
+                0x00 ... 0x7f   => Ok((c as u64, rest)),
+                0xcc            => match needs_more_data!(1, rest) {
+                                        (item, rest) => Ok((item[0] as u64, rest))
+                                   },
+                0xcd            => match needs_more_data!(2, rest) {
+                                        (item, rest) => {
+                                                Ok((be_u16!(item) as u64, rest))
+                                        }
+                                   },
+                0xce            => match needs_more_data!(4, rest) {
+                                        (item, rest) => {
+                                                Ok((be_u32!(item) as u64, rest))
+                                        }
+                                   },
+                0xcf            => match needs_more_data!(8, rest) {
+                                        (item, rest) => {
+                                                Ok((be_u64!(item), rest))
+                                        }
+                                   },
+                _               => Err(Error::Invalid("Invalid")),
+            }
+        }
+        None => {
+            Err(Error::Eos)
+        }
+    }
+}
+
+#[inline]
 pub fn parse_next<'a>(data: &'a[u8]) -> Result<(Value<'a>, &'a[u8]), Error> {
     match data.split_first() {
         Some((&c, rest)) => {
