@@ -165,6 +165,32 @@ pub fn parse_unsigned<'a>(data: &'a[u8]) -> Result<(u64, &'a[u8]), Error> {
     }
 }
 
+/// skips next value (recursively)
+/// XXX: avoid recursion
+#[inline]
+pub fn skip_next<'a>(data: &'a[u8]) -> Result<&'a[u8], Error> {
+    match try!(parse_next(data)) {
+        (Value::Array(n), rest) => {
+            let mut next = rest;
+            for _ in 0 .. n as usize {
+                next = try!(skip_next(next));
+            }
+            Ok(next)
+        }
+        (Value::Map(n), rest) => {
+            let mut next = rest;
+            for _ in 0 .. n as usize {
+                next = try!(skip_next(next)); // key
+                next = try!(skip_next(next)); // value
+            }
+            Ok(next)
+        }
+        (_, rest) => {
+            Ok(rest)
+        }
+    }
+}
+
 #[inline]
 pub fn parse_next<'a>(data: &'a[u8]) -> Result<(Value<'a>, &'a[u8]), Error> {
     match data.split_first() {
