@@ -1,5 +1,7 @@
 sudo: false
 language: rust
+rust:
+    - nightly
 notifications:
   email:
     - michaelneuma@gmail.com
