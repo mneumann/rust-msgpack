@@ -201,6 +201,39 @@ pub fn parse_unsigned<'a>(data: &'a[u8]) -> Result<(u64, &'a[u8]), Error> {
     }
 }
 
+#[inline]
+pub fn parse_map_len<'a>(data: &'a[u8]) -> Result<(usize, &'a[u8]), Error> {
+    match data.split_first() {
+        Some((&c, rest)) => {
+            if c >= 0x80 && c <= 0x8f {
+                return Ok(((c as usize) & 0x0F, rest));
+            }
+
+            match c {
+                //
+                // Map
+                //
+
+                //0x80 ... 0x8f   => Ok(((c as usize) & 0x0F, rest)),
+                0xde            => match needs_more_data!(2, rest) {
+                                        (item, rest) => Ok((be_u16!(item) as usize, rest))
+                                   },
+                0xdf            => match needs_more_data!(4, rest) {
+                                        (item, rest) => Ok((be_u32!(item) as usize, rest))
+                                   },
+
+                _               => Err(Error::Invalid("Invalid. No map"))
+            }
+        }
+        None => {
+            Err(Error::Eos)
+        }
+    }
+}
+
+
+
+
 /// skips next value (recursively)
 /// XXX: avoid recursion
 #[inline]
