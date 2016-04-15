@@ -267,7 +267,7 @@ pub fn parse_next<'a>(data: &'a[u8]) -> Result<(Value<'a>, &'a[u8]), Error> {
             if c <= 0x7f {
                 return Ok((Value::Unsigned(c as u64), rest));
             }
-            if c >= 0xe0 && c <= 0xff {
+            if c >= 0xe0 {
                 return Ok((Value::Signed((c as i8) as i64), rest));
             }
             if c >= 0xa0 && c <= 0xbf {
@@ -465,12 +465,10 @@ impl<'a> Reader<'a> {
 #[test]
 fn test_decode() {
     use super::encode_into;
-    use rustc_serialize::Encodable;
-    use super::Encoder;
 
     let mut v = Vec::new();
 
-    encode_into(&mut v, &1234u64);
+    assert!(encode_into(&mut v, &1234u64).is_ok());
 
     match parse_next(&v[..]) {
         Ok((Value::Unsigned(n), rest)) => {
@@ -484,12 +482,10 @@ fn test_decode() {
 #[test]
 fn test_decode_array() {
     use super::encode_into;
-    use rustc_serialize::Encodable;
-    use super::Encoder;
 
     let mut v = Vec::new();
 
-    encode_into(&mut v, &[1u64, 2u64, 3u64]);
+    assert!(encode_into(&mut v, &[1u64, 2u64, 3u64]).is_ok());
 
     match parse_next(&v[..]) {
         Ok((Value::Array(n), rest)) => {
@@ -515,12 +511,10 @@ fn test_decode_array() {
 #[test]
 fn test_decode_string() {
     use super::encode_into;
-    use rustc_serialize::Encodable;
-    use super::Encoder;
 
     let mut v = Vec::new();
 
-    encode_into(&mut v, &"hello world");
+    assert!(encode_into(&mut v, &"hello world").is_ok());
 
     match parse_next(&v[..]) {
         Ok((Value::String(s), rest)) => {

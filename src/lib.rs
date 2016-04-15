@@ -1,7 +1,6 @@
 //! msgpack.org implementation for Rust
 
 #![crate_type = "lib"]
-#![feature(slice_splits)]
 
 extern crate rustc_serialize;
 extern crate byteorder;
@@ -10,12 +9,11 @@ use std::io;
 use std::io::{BufReader, Read, Write};
 use std::io::ErrorKind;
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use std::str::from_utf8;
 use std::mem;
 
 use rustc_serialize::{Encodable, Decodable};
 
-pub type MsgpackResult<T> = Result<T, byteorder::Error>;
+pub type MsgpackResult<T> = Result<T, std::io::Error>;
 
 pub mod slice_reader;
 pub mod encoder;
@@ -48,9 +46,8 @@ fn read_double(rd: &mut Read) -> MsgpackResult<f64> {
     rd.read_u64::<BigEndian>().map(|v| unsafe { mem::transmute(v) })
 }
 
-pub fn _invalid_input(s: &'static str) -> byteorder::Error {
-    let err = io::Error::new(ErrorKind::InvalidInput, s);
-    byteorder::Error::Io(err)
+pub fn _invalid_input(s: &'static str) -> std::io::Error {
+    io::Error::new(ErrorKind::InvalidInput, s)
 }
 
 /// A structure to decode Msgpack from a reader.
@@ -132,7 +129,7 @@ impl<'a, R: Read> Decoder<R> {
         let mut buf = [0; 1];
         while nread < len {
             match self.rd.read(&mut buf) {
-                Ok(0) => return Err(byteorder::Error::UnexpectedEOF),
+                Ok(0) => return Err(io::Error::new(io::ErrorKind::UnexpectedEof,"")),
                 Ok(n) => {
                     nread += n;
                     vec.push(buf[0]);
@@ -172,6 +169,7 @@ impl<'a, R: Read> Decoder<R> {
         }
     }
 
+    /*
     fn decode_array(&mut self, len: usize) -> MsgpackResult<Value> {
         let mut v = Vec::with_capacity(len);
         for _ in 0 .. len {
@@ -274,6 +272,7 @@ impl<'a, R: Read> Decoder<R> {
             _            => unreachable!()
         }
     }
+    */
 
 
 }
@@ -308,7 +307,7 @@ macro_rules! read_iprimitive {
 }
 
 impl<R: Read> rustc_serialize::Decoder for Decoder<R> {
-    type Error = byteorder::Error;
+    type Error = std::io::Error;
 
     #[inline]
     fn read_nil(&mut self) -> MsgpackResult<()> {
@@ -449,7 +448,7 @@ impl<R: Read> rustc_serialize::Decoder for Decoder<R> {
     fn read_option<T,F>(&mut self, mut f: F) -> MsgpackResult<T>
     where F: FnMut(&mut Decoder<R>, bool) -> MsgpackResult<T> {
         match try!(self._peek_byte()) {
-            0xc0 => { self._read_byte(); f(self, false) }, // consume the nil byte from packed format
+            0xc0 => { try!(self._read_byte()); f(self, false) }, // consume the nil byte from packed format
             _    => { f(self, true) },
         }
     }
@@ -515,10 +514,9 @@ impl<R: Read> rustc_serialize::Decoder for Decoder<R> {
         self.read_tuple_arg(idx, f)
     }
 
-    fn error(&mut self, _err: &str) -> byteorder::Error {
-        let err = io::Error::new(ErrorKind::InvalidInput,
-                                 "ApplicationError");
-        byteorder::Error::Io(err)
+    fn error(&mut self, _err: &str) -> std::io::Error {
+        io::Error::new(ErrorKind::InvalidInput,
+                                 "ApplicationError")
     }
 }
 
@@ -654,7 +652,7 @@ impl<'a> Encoder<'a> {
 }
 
 impl<'a> rustc_serialize::Encoder for Encoder<'a> {
-    type Error = byteorder::Error;
+    type Error = std::io::Error;
 
     fn emit_nil(&mut self) -> MsgpackResult<()> { self.wr.write_u8(0xc0) }
 
@@ -706,11 +704,7 @@ impl<'a> rustc_serialize::Encoder for Encoder<'a> {
 
     fn emit_str(&mut self, v: &str) -> MsgpackResult<()> {
         try!(self._emit_str_len(v.len()));
-        // XXX There has to be a better way to do this...
-        match self.wr.write_all(v.as_bytes()) {
-            Ok(v) => Ok(v),
-            Err(e) => Err(byteorder::Error::Io(e))
-        }
+        self.wr.write_all(v.as_bytes())
     }
 
     fn emit_enum<F>(&mut self, _name: &str, f: F) -> MsgpackResult<()>
@@ -720,7 +714,7 @@ impl<'a> rustc_serialize::Encoder for Encoder<'a> {
 
     fn emit_enum_variant<F>(&mut self, name: &str, _id: usize, cnt: usize, f: F) -> MsgpackResult<()>
     where F: FnOnce(&mut Encoder<'a>) -> MsgpackResult<()> {
-        self.emit_seq(cnt + 1, |d| { d.emit_str(name) });
+        try!(self.emit_seq(cnt + 1, |d| { d.emit_str(name) }));
         f(self)
     }
 
