@@ -1,3 +1,6 @@
+WARNING: This is no longer maintained or works with current Rust versions.
+Please use https://github.com/3Hren/msgpack-rust instead.
+
 # rust-msgpack [![Build Status][travis-image]][travis-link]
 
 [travis-image]: https://travis-ci.org/mneumann/rust-msgpack.png?branch=master
