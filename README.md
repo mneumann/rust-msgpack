@@ -18,7 +18,7 @@ Simply include the rust-msgpack in your Cargo dependencies.
 ```toml
 [dependencies.msgpack]
 
-git = "git@github.com:mneumann/rust-msgpack.git"
+git = "https://github.com/mneumann/rust-msgpack"
 ```
 
 ## Quickstart
